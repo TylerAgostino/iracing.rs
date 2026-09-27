@@ -5,16 +5,16 @@ use crate::{IRacingSDKError, Result, VariableInfo, irsdk::VariableType};
 pub(crate) fn bytes_at_size(data: &[u8], offset: usize, length: usize) -> Result<&[u8]> {
     let end = offset
         .checked_add(length)
-        .ok_or_else(|| IRacingSDKError::memory_access_error(offset))?;
+        .ok_or_else(|| IRacingSDKError::memory_invalid_input(offset, length))?;
 
     data.get(offset..end)
-        .ok_or_else(|| IRacingSDKError::memory_access_error(offset))
+        .ok_or_else(|| IRacingSDKError::memory_unexpected_eof(offset, end, data.len()))
 }
 
 pub(crate) fn bytes_at<const SIZE: usize>(data: &[u8], offset: usize) -> Result<&[u8; SIZE]> {
     bytes_at_size(data, offset, SIZE)?
         .try_into()
-        .map_err(|_| IRacingSDKError::memory_access_error(offset))
+        .map_err(|e| IRacingSDKError::memory_access_error(offset, e))
 }
 
 pub(crate) fn nul_terminated_bytes(bytes: &[u8]) -> &[u8] {
