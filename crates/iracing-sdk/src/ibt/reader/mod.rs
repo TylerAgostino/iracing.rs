@@ -44,8 +44,8 @@
 //!   read. Metadata is read on demand and is not cached by the reader.
 
 use crate::{
-    irsdk::{DiskSubHeader, Header},
     ByteRegion, IRacingSDKError, IbtLayout, Result, SessionInfoBuffer, VariableHeadersBuffer,
+    irsdk::{DiskSubHeader, Header},
 };
 use memmap2::Mmap;
 use std::{
@@ -132,6 +132,8 @@ impl IbtReader {
     ///
     /// Construction reads the fixed main and disk sub-headers. Metadata bodies
     /// and telemetry frames remain file-backed until explicitly requested.
+    ///
+    /// The file must not be truncated or modified while the reader is alive.
     ///
     /// # Errors
     ///
