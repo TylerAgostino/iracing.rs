@@ -4,5 +4,3 @@
 //! `iracing_sdk::irsdk` imports remain source-compatible.
 
 pub use iracing_irsdk::*;
-
-mod telemetry_integration;

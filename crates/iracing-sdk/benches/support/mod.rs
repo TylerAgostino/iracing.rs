@@ -91,7 +91,8 @@ pub fn require_variable<'a>(
         "benchmark variable `{name}` has an unexpected telemetry type"
     );
     assert_eq!(
-        info.count, expected_count,
+        info.count(),
+        expected_count,
         "benchmark variable `{name}` has an unexpected element count"
     );
 
@@ -102,8 +103,8 @@ pub fn require_variable<'a>(
 pub fn ordered_variables(schema: &VariableSchema) -> Vec<&VariableInfo> {
     let mut variables: Vec<_> = schema.variables.values().collect();
     variables.sort_unstable_by(|left, right| {
-        left.offset
-            .cmp(&right.offset)
+        left.offset()
+            .cmp(&right.offset())
             .then_with(|| left.name.cmp(&right.name))
     });
 
@@ -125,37 +126,40 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
         let byte_len = info
             .data_type
             .byte_size()
-            .checked_mul(info.count)
+            .checked_mul(info.count())
             .unwrap_or_else(|| {
                 panic!(
                     "byte length overflow for benchmark variable `{}`",
                     info.name
                 )
             });
-        let end = info.offset.checked_add(byte_len).unwrap_or_else(|| {
+        let end = info.offset().checked_add(byte_len).unwrap_or_else(|| {
             panic!("end offset overflow for benchmark variable `{}`", info.name)
         });
         assert!(
             end <= packet.data.len(),
             "benchmark variable `{}` at offset {} with type {:?} and count {} exceeds frame size {}",
             info.name,
-            info.offset,
+            info.offset(),
             info.data_type,
-            info.count,
+            info.count(),
             packet.data.len()
         );
 
         let actual = TelemetryValue::decode(packet.data.as_ref(), info).unwrap_or_else(|error| {
             panic!(
                 "failed to decode benchmark variable `{}` at offset {} with type {:?} and count {}: {error}",
-                info.name, info.offset, info.data_type, info.count
+                info.name, info.offset(), info.data_type, info.count()
             )
         });
         let expected = expected_value(info);
         assert_eq!(
-            actual, expected,
+            actual,
+            expected,
             "decoded sentinel mismatch for benchmark variable `{}` with type {:?} and count {}",
-            info.name, info.data_type, info.count
+            info.name,
+            info.data_type,
+            info.count()
         );
     }
 }
@@ -164,16 +168,16 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
 pub fn total_elements(variables: &[&VariableInfo]) -> usize {
     variables
         .iter()
-        .try_fold(0_usize, |total, info| total.checked_add(info.count))
+        .try_fold(0_usize, |total, info| total.checked_add(info.count()))
         .expect("full-frame benchmark element count overflow")
 }
 
 fn expected_value(info: &VariableInfo) -> TelemetryValue {
-    if info.count == 1 {
+    if info.count() == 1 {
         expected_scalar(info.data_type, 0)
     } else {
         TelemetryValue::Array(
-            (0..info.count)
+            (0..info.count())
                 .map(|index| expected_scalar(info.data_type, index))
                 .collect(),
         )
@@ -197,8 +201,8 @@ fn expected_scalar(data_type: VariableType, index: usize) -> TelemetryValue {
 
 fn populate_frame(data: &mut [u8], schema: &VariableSchema) {
     for info in ordered_variables(schema) {
-        for index in 0..info.count {
-            let offset = info.offset + index * info.data_type.byte_size();
+        for index in 0..info.count() {
+            let offset = info.offset() + index * info.data_type.byte_size();
             let value = (index as u32).wrapping_add(1);
 
             match info.data_type {
