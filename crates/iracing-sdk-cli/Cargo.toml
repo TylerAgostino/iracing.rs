@@ -36,15 +36,15 @@ workspace = true
 anyhow = { workspace = true }
 clap = { workspace = true }
 csv = { workspace = true }
-futures = "0.3"
-iracing-sdk = { version = "0.1.0", path = "../iracing-sdk" }
+futures = { workspace = true }
+iracing-sdk = { workspace = true }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
+tracing-subscriber = { workspace = true }
 type-layout = { workspace = true }
 
 [features]

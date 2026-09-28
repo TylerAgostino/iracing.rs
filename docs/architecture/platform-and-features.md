@@ -2,20 +2,20 @@
 
 ## Capability matrix
 
-| Capability | Linux/macOS | Windows | WASM library check |
-| --- | --- | --- | --- |
-| `.ibt` parsing and direct replay | Yes | Yes | Must compile |
-| Variable/frame/adapter types | Yes | Yes | Must compile |
-| Session YAML models and parsing | Yes | Yes | Must compile |
-| `IbtProvider` and `IbtConnection` | Yes | Yes | Must compile where runtime subset allows |
-| Live shared-memory provider | No | Yes | No transport |
-| `LiveConnection` symbol | Stub/builder only | Full implementation | Portable surface only |
-| Typed broadcast commands | Yes | Yes | Must remain portable where exported |
-| Win32 broadcast transport | No | Yes | No |
-| Generated gRPC bindings/client | Yes | Yes | Not part of SDK WASM gate |
-| Real broadcast gRPC service/server | No | Yes | No |
-| Simulation HTTP probe | Yes | Yes | Not checked for WASM |
-| Simulation process enumeration | No | Yes | No |
+| Capability | Linux/macOS | Windows |
+| --- | --- | --- |
+| `.ibt` parsing and direct replay | Yes | Yes |
+| Variable/frame/adapter types | Yes | Yes |
+| Session YAML models and parsing | Yes | Yes |
+| `IbtProvider` and `IbtConnection` | Yes | Yes |
+| Live shared-memory provider | No | Yes |
+| `LiveConnection` symbol | Stub/builder only | Full implementation |
+| Typed broadcast commands | Yes | Yes |
+| Win32 broadcast transport | No | Yes |
+| Generated gRPC bindings/client | Yes | Yes |
+| Real broadcast gRPC service/server | No | Yes |
+| Simulation HTTP probe | Yes | Yes |
+| Simulation process enumeration | No | Yes |
 
 ## Windows boundary
 
@@ -48,16 +48,6 @@ support is selected by `cfg(windows)`, not a Cargo `live` feature.
 
 Schema generation commonly enables both `codegen` and `schema-discovery`
 because discovery overlays provide examples/unknown fields used by the tools.
-
-## Tokio target split
-
-Native `iracing-sdk` targets use full Tokio. `wasm32` uses a reduced,
-default-features-disabled subset for synchronization, runtime, time, streams,
-and cancellation support.
-
-Keep code that only needs WASM-safe synchronization portable. Gate or restructure
-APIs that require native runtime, I/O, signals, or OS threads. WASM compatibility
-is not enforced by the CI workflow.
 
 ## Documentation and CI platforms
 

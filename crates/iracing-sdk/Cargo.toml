@@ -22,14 +22,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
 async-trait = "0.1.85"
-clap = { workspace = true }
-csv = { workspace = true }
-encoding_rs = "0.8.35"
-futures = "0.3"
-iracing-irsdk = { version = "0.1.0", path = "../iracing-irsdk" }
-iracing-sdk-derive = { version = "0.1.0", path = "../iracing-sdk-derive", optional = true }
+futures = { workspace = true }
+iracing-irsdk = { workspace = true }
+iracing-sdk-derive = { workspace = true, optional = true }
 memmap2 = "0.9"
 pin-project-lite = "0.2"
 schemars = { workspace = true, optional = true }
@@ -37,14 +33,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
-type-layout = { workspace = true }
 zerocopy = { workspace = true }
 
 # Windows-specific dependencies (for live telemetry)
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.0", features = [
+windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_System_Memory",
   "Win32_System_Threading",
@@ -52,30 +49,16 @@ windows = { version = "0.62.0", features = [
 ] }
 windows-core = "0.62.0"
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "1", default-features = false, features = [
-  "sync",
-  "rt",
-  "time",
-] }
-tokio-stream = { version = "0.1", default-features = false, features = [
-  "sync",
-] }
-tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1", features = ["full"] }
-tokio-stream = { version = "0.1", default-features = false, features = [
-  "sync",
-] }
-tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
-
 [dev-dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+csv = { workspace = true }
 criterion = { package = "codspeed-criterion-compat", version = "5.0.2", features = ["cargo_bench_support", "html_reports"] }
-iracing-sdk-derive = { version = "0.1.0", path = "../iracing-sdk-derive" }
+iracing-sdk-derive = { workspace = true }
 proptest = "1.11.0"
-tempfile = "3"
-tokio = { version = "1", features = ["test-util"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true }
 
 [features]
 default = ["derive"]

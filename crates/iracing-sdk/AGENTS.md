@@ -32,8 +32,6 @@
 
 - Gate actual shared-memory, live-provider, and Win32 broadcast transports with `#[cfg(windows)]`. Keep portable typed commands and the non-Windows `LiveConnection` builder stub available where the public API already promises them.
 - Recorded and live sources have different delivery semantics. IBT replay is explicitly started and advances one shared cursor only after every active subscription asks for its next item; live delivery remains latest-wins.
-- Tokio is a target-specific internal dependency: native targets use full Tokio, while `wasm32` builds are limited to Tokio's WASM-safe subset.
-- Only gate APIs that require incompatible Tokio runtime behavior; `tokio::sync` usage can stay in shared code.
 
 ## Examples & Binaries
 

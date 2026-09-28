@@ -18,15 +18,15 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-futures = "0.3"
-iracing-irsdk = { path = "../iracing-irsdk" }
-iracing-sdk = { path = "../iracing-sdk", default-features = false }
-rand = { workspace = true }
-rand_chacha = { workspace = true }
+futures = { workspace = true }
+iracing-irsdk = { workspace = true }
+iracing-sdk = { version = "0.1.0", path = "../iracing-sdk", default-features = false }
+rand = "0.9"
+rand_chacha = "0.9"
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
+sha2 = "0.10"
 zerocopy = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = { workspace = true }
