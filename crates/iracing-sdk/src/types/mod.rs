@@ -20,22 +20,14 @@
 //! ## Usage Example
 //!
 //! ```rust,no_run
-//! use iracing_sdk::{VarData, VariableInfo, VariableSchema, irsdk::VariableType};
-//! use std::collections::HashMap;
+//! use iracing_sdk::{VarData, VariableSchema, irsdk::{VariableHeader, VariableType}};
 //!
 //! // Create a schema for RPM data
-//! let mut variables = HashMap::new();
-//! variables.insert("RPM".to_string(), VariableInfo {
-//!     name: "RPM".to_string(),
-//!     data_type: VariableType::Float,
-//!     offset: 0,
-//!     count: 1,
-//!     count_as_time: false,
-//!     units: "rev/min".to_string(),
-//!     description: "Engine RPM".to_string(),
-//! });
+//! let header = VariableHeader::new(
+//!     VariableType::Float, 0, 1, false, "RPM", "Engine RPM", "rev/min"
+//! ).expect("valid RPM header");
 //!
-//! let schema = VariableSchema::new(variables, 4)?;
+//! let schema = VariableSchema::try_from_headers(&[header], 4)?;
 //! let frame = vec![0x00, 0xA0, 0x8C, 0x45]; // 4500.0 as little-endian f32
 //!
 //! // Parse RPM value
@@ -74,14 +66,13 @@ pub use variable_headers_buffer::VariableHeadersBuffer;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::irsdk::VariableType;
+    use crate::irsdk::{VariableHeader, VariableType};
 
     use proptest::prelude::*;
 
     // Property test strategies
     prop_compose! {
-        fn arb_variable_info()(
-            name in "[a-zA-Z][a-zA-Z0-9_]*",
+        fn arb_variable_metadata()(
             data_type in prop::sample::select(vec![
                 VariableType::Character, VariableType::Integer,
                 VariableType::Float, VariableType::Double,
@@ -89,22 +80,19 @@ mod tests {
             ]),
             offset in 0..1024usize,
             count in 1..10usize,
-            units in "[a-zA-Z/^2]*",
-            description in "[a-zA-Z ]*"
-        ) -> VariableInfo {
-            VariableInfo {
-                name,
-                data_type,
-                offset,
-                count,
-                count_as_time: false,
-                units,
-                description,
-            }
+            units in "[a-zA-Z/^2]{0,31}",
+            description in "[a-zA-Z ]{0,63}"
+        ) -> (VariableType, usize, usize, String, String) {
+            (data_type, offset, count, units, description)
         }
     }
 
-    // RawFrame tests removed - RawFrame no longer exists
+    fn scalar_info(data_type: VariableType, offset: usize, frame_size: usize) -> VariableInfo {
+        let header =
+            VariableHeader::new(data_type, offset as i32, 1, false, "test", "test", "test")
+                .unwrap();
+        VariableInfo::try_from_header(&header, frame_size).unwrap()
+    }
 
     // Property tests for VariableSchema
     proptest! {
@@ -112,46 +100,40 @@ mod tests {
         #[test]
         fn prop_variable_schema_parsing_with_fuzzed_headers(
             variables in prop::collection::btree_map(
-                "[a-zA-Z][a-zA-Z0-9_]*",
-                arb_variable_info(),
+                "[a-zA-Z][a-zA-Z0-9_]{0,30}",
+                arb_variable_metadata(),
                 0..20
             ),
             frame_size in 64..2048usize
         ) {
-            // VariableSchema parsing succeeds/fails appropriately with fuzzed headers
-            use std::collections::HashMap;
-            let mut adjusted_variables = HashMap::new();
+            let headers: Vec<_> = variables
+                .into_iter()
+                .map(|(name, (data_type, offset, count, units, description))| {
+                    let count = if data_type.byte_size() * count <= frame_size { count } else { 1 };
+                    let length = data_type.byte_size() * count;
+                    let offset = offset % (frame_size - length + 1);
+                    VariableHeader::new(
+                        data_type,
+                        offset as i32,
+                        count as i32,
+                        false,
+                        &name,
+                        &description,
+                        &units,
+                    )
+                    .unwrap()
+                })
+                .collect();
 
-            // Adjust variable offsets to ensure they fit within frame_size
-            for (name, mut var_info) in variables.into_iter() {
-                // Ensure offset is within reasonable bounds for the frame size
-                let max_size = var_info.data_type.byte_size() * var_info.count;
-                if max_size < frame_size {
-                    var_info.offset %= frame_size - max_size;
-                } else {
-                    var_info.offset = 0;
-                    var_info.count = 1;
-                }
+            let schema = VariableSchema::try_from_headers(&headers, frame_size).unwrap();
+            prop_assert_eq!(schema.variable_count(), headers.len());
+            prop_assert_eq!(schema.frame_size, frame_size);
 
-                // Ensure name consistency
-                var_info.name = name.clone();
-                adjusted_variables.insert(name, var_info);
-            }
-
-            let schema = VariableSchema {
-                variables: adjusted_variables,
-                frame_size,
-            };
-
-            // Schema should be consistent
-            prop_assert!(schema.frame_size <= 2048);
-            prop_assert!(schema.frame_size >= 64);
-
-            // All variable offsets should be reasonable
             for var_info in schema.variables.values() {
-                let end_offset = var_info.offset + (var_info.data_type.byte_size() * var_info.count);
-                prop_assert!(end_offset <= schema.frame_size);
-                prop_assert!(var_info.count > 0);
+                let region = var_info.region();
+                prop_assert!(region.as_range().end <= schema.frame_size);
+                prop_assert_eq!(region.len(), var_info.data_type.byte_size() * region.count());
+                prop_assert!(region.count() > 0);
             }
         }
 
@@ -189,15 +171,7 @@ mod tests {
             let bytes = value.to_le_bytes();
             data[offset..offset + 4].copy_from_slice(&bytes);
 
-            let var_info = VariableInfo {
-                name: "test".to_string(),
-                data_type: VariableType::Float,
-                offset,
-                count: 1,
-                count_as_time: false,
-                units: "test".to_string(),
-                description: "test".to_string(),
-            };
+            let var_info = scalar_info(VariableType::Float, offset, data.len());
 
             let result = f32::from_bytes(&data, &var_info);
             prop_assert!(result.is_ok());
@@ -221,15 +195,7 @@ mod tests {
             let bytes = value.to_le_bytes();
             data[offset..offset + 4].copy_from_slice(&bytes);
 
-            let var_info = VariableInfo {
-                name: "test".to_string(),
-                data_type: VariableType::Integer,
-                offset,
-                count: 1,
-                count_as_time: false,
-                units: "test".to_string(),
-                description: "test".to_string(),
-            };
+            let var_info = scalar_info(VariableType::Integer, offset, data.len());
 
             let result = i32::from_bytes(&data, &var_info);
             prop_assert!(result.is_ok());
@@ -246,15 +212,7 @@ mod tests {
             let bytes = value.to_le_bytes();
             data[offset..offset + 4].copy_from_slice(&bytes);
 
-            let var_info = VariableInfo {
-                name: "test".to_string(),
-                data_type: VariableType::BitField,
-                offset,
-                count: 1,
-                count_as_time: false,
-                units: "test".to_string(),
-                description: "test".to_string(),
-            };
+            let var_info = scalar_info(VariableType::BitField, offset, data.len());
 
             let result = BitField::from_bytes(&data, &var_info);
             prop_assert!(result.is_ok());

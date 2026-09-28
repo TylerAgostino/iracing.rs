@@ -67,7 +67,7 @@ impl LiveProvider {
         }
 
         let frame_size = header.buffer_length as usize;
-        let schema = Arc::new(VariableSchema::new(variable_map, frame_size)?);
+        let schema = Arc::new(VariableSchema::new(variable_map, frame_size));
 
         Ok(Self {
             connection,

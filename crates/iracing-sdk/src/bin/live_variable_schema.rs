@@ -87,7 +87,7 @@ pub fn main() -> anyhow::Result<()> {
         }
 
         let frame_size = connection.header().buffer_length as usize;
-        let variable_schema = VariableSchema::new(variable_map, frame_size)?;
+        let variable_schema = VariableSchema::new(variable_map, frame_size);
         let schema = schemars::schema_for_value!(variable_schema);
 
         let output_file = File::create(&output_path)?;

@@ -199,10 +199,7 @@ mod tests {
             Vec::new(),
             tick,
             0,
-            Arc::new(
-                VariableSchema::new(HashMap::new(), 0)
-                    .expect("an empty telemetry schema should be valid"),
-            ),
+            Arc::new(VariableSchema::new(HashMap::new(), 0)),
         )
     }
 

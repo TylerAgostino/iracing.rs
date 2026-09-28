@@ -183,10 +183,7 @@ mod tests {
     }
 
     fn empty_schema() -> Arc<VariableSchema> {
-        Arc::new(
-            VariableSchema::new(HashMap::new(), 0)
-                .expect("an empty schema should be valid for lifecycle tests"),
-        )
+        Arc::new(VariableSchema::new(HashMap::new(), 0))
     }
 
     struct PendingProvider;

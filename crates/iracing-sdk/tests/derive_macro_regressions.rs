@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 use iracing_sdk::{
     BitField, FieldExtraction, FrameAdapter, FramePacket, IRacingSDKError, VariableInfo,
     VariableSchema,
-    irsdk::{IncidentFlags, VariableType},
+    irsdk::{IncidentFlags, VariableHeader, VariableType},
 };
 use iracing_sdk_derive::IRacingTelemetryFrame;
 
@@ -15,26 +15,28 @@ use iracing_sdk_derive::IRacingTelemetryFrame;
 /// let info = make_variable_info("Speed", VariableType::Float, 0);
 /// assert_eq!(info.name, "Speed");
 /// assert_eq!(info.data_type, VariableType::Float);
-/// assert_eq!(info.offset, 0);
-/// assert_eq!(info.count, 1);
+/// assert_eq!(info.offset(), 0);
+/// assert_eq!(info.count(), 1);
 /// ```
 fn make_variable_info(name: &str, data_type: VariableType, offset: usize) -> VariableInfo {
-    VariableInfo {
-        name: name.to_string(),
+    let header = VariableHeader::new(
         data_type,
-        offset,
-        count: 1,
-        count_as_time: false,
-        units: String::new(),
-        description: String::new(),
-    }
+        offset.try_into().expect("test offset should fit in i32"),
+        1,
+        false,
+        name,
+        "",
+        "",
+    )
+    .expect("test variable header should be valid");
+    VariableInfo::try_from_header(&header, offset + data_type.byte_size())
+        .expect("test variable should fit in its frame")
 }
 
 /// Builds a VariableSchema from a list of `(name, VariableType, offset)` entries.
 ///
 /// The provided entries are converted into `VariableInfo` records and assembled into a
-/// `VariableSchema` with the given `frame_size`. This function will panic if the
-/// constructed schema is invalid.
+/// `VariableSchema` with the given `frame_size`.
 ///
 /// # Examples
 ///
@@ -54,7 +56,7 @@ fn make_schema(entries: &[(&str, VariableType, usize)], frame_size: usize) -> Va
         })
         .collect::<HashMap<_, _>>();
 
-    VariableSchema::new(variables, frame_size).expect("schema should be valid")
+    VariableSchema::new(variables, frame_size)
 }
 
 /// Constructs a FramePacket from raw frame bytes and an associated VariableSchema.
