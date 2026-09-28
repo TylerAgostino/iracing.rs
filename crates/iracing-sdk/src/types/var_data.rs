@@ -1,130 +1,240 @@
 //! Variable data parsing trait and implementations
-use super::{BitField, VariableInfo};
-use crate::{IRacingSDKError, Result, parse_utils::decode_variable_type};
+use super::VariableInfo;
+use crate::{IRacingSDKError, Result, irsdk::VariableType};
+
+use iracing_irsdk::{
+    BitField, BroadcastMessage, CameraState, CameraSwitchFocusMode, CarLeftRight, ChatCommandMode,
+    EngineWarnings, ForceFeedbackCommandMode, IncidentFlags, PaceFlags, PaceMode, PitCommandMode,
+    PitServiceFlags, PitServiceStatus, ReloadTexturesMode, ReplayPositionMode, ReplaySearchMode,
+    ReplayStateMode, SessionFlags, SessionState, TelemetryCommandMode, TrackLocation, TrackSurface,
+    TrackWetness, VideoCaptureMode,
+};
+use zerocopy::{FromBytes, TryFromBytes};
 
 /// Trait for types that can be parsed from binary telemetry data.
 pub trait VarData: Sized {
+    /// Check whether this Rust type can decode a telemetry variable type.
+    fn validate_variable_type(_data_type: VariableType) -> Result<()> {
+        Ok(())
+    }
+
+    /// Decode `count` instaces of `VarData` from `bytes`.
+    /// `bytes` is sized to the expected variable type.
+    fn decode(bytes: &[u8], count: usize) -> Result<Self>;
+
     /// Parse this type from binary data at the given offset.
-    fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self>;
-}
-
-/// irsdk::VariableType::Float
-impl VarData for f32 {
     fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        decode_variable_type!(data, info, Float, f32::from_le_bytes)
+        let region = info.region();
+
+        let bytes = data.get(region.as_range()).ok_or_else(|| {
+            IRacingSDKError::parse_error(
+                "VarData::from_bytes",
+                "Variable region exceeds frame bounds",
+            )
+        })?;
+
+        Self::decode(bytes, region.count())
     }
 }
 
-/// irsdk::VariableType::Integer
-impl VarData for i32 {
-    fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        decode_variable_type!(data, info, Integer, i32::from_le_bytes)
-    }
+macro_rules! impl_scalar_from_bytes_var_data {
+    ($($type:ty => $variable_type:ident),+ $(,)?) => {
+        $(
+            impl VarData for $type {
+                fn validate_variable_type(data_type: VariableType) -> Result<()> {
+                    if data_type != VariableType::$variable_type {
+                        return Err(IRacingSDKError::type_conversion(
+                            VariableType::$variable_type,
+                            data_type,
+                        ));
+                    }
+                    Ok(())
+                }
+
+                fn decode(bytes: &[u8], count: usize) -> Result<Self> {
+                    if count != 1 {
+                        return Err(IRacingSDKError::parse_error("VarData", "Expected a scalar"));
+                    }
+
+                    <$type as FromBytes>::read_from_bytes(bytes).map_err(|_| {
+                        IRacingSDKError::WireSize {
+                            expected: size_of::<$type>(),
+                            actual: bytes.len(),
+                        }
+                    })
+                }
+            }
+        )+
+    };
 }
 
-/// irsdk::VariableType::Bool
+impl_scalar_from_bytes_var_data!(
+    f32 => Float,
+    i32 => Integer,
+    u32 => BitField,
+    f64 => Double,
+    u8 => Character,
+);
+
+/// Implementation of VarData over bool is a one-off due to it's usage of `TryFromBytes`.
 impl VarData for bool {
-    fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        decode_variable_type!(data, info, Boolean, |[byte]| byte != 0)
+    fn validate_variable_type(data_type: VariableType) -> Result<()> {
+        if data_type != VariableType::Boolean {
+            return Err(IRacingSDKError::type_conversion(
+                VariableType::Boolean,
+                data_type,
+            ));
+        }
+        Ok(())
     }
-}
 
-/// irsdk::VariableType::BitField
-impl VarData for BitField {
-    fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        decode_variable_type!(data, info, BitField, |bytes| {
-            BitField(u32::from_le_bytes(bytes))
+    fn decode(bytes: &[u8], count: usize) -> Result<Self> {
+        if count != 1 {
+            return Err(IRacingSDKError::parse_error("VarData", "Expected a scalar"));
+        }
+
+        <bool as TryFromBytes>::try_read_from_bytes(bytes).map_err(|_| IRacingSDKError::WireSize {
+            expected: size_of::<bool>(),
+            actual: bytes.len(),
         })
     }
 }
 
-/// irsdk::VariableType::Character
-impl VarData for u8 {
-    fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        decode_variable_type!(data, info, Character, |[byte]| byte)
+impl VarData for BitField {
+    fn validate_variable_type(data_type: VariableType) -> Result<()> {
+        <u32 as VarData>::validate_variable_type(data_type)
+    }
+
+    fn decode(bytes: &[u8], count: usize) -> Result<Self> {
+        let raw = <u32 as VarData>::decode(bytes, count)?;
+        Ok(Self::new(raw))
     }
 }
 
-/// irsdk::VariableType::Double
-impl VarData for f64 {
-    fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        decode_variable_type!(data, info, Double, f64::from_le_bytes)
-    }
-}
+macro_rules! impl_enum_var_data {
+    ($($type:ty),+ $(,)?) => {$ (
+        impl VarData for $type {
+            fn validate_variable_type(data_type: VariableType) -> Result<()> {
+                <i32 as VarData>::validate_variable_type(data_type)
+            }
 
-// Array support for VarData
-impl<T: VarData> VarData for Vec<T> {
-    fn from_bytes(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        let element_size = info.data_type.byte_size();
+            fn decode(bytes: &[u8], count: usize) -> crate::Result<Self> {
+                // Decode as an i32
+                let raw = <i32 as VarData>::decode(bytes, count)?;
 
-        if info.count == 0 {
-            return Ok(Vec::new());
-        }
-
-        let mut result = Vec::with_capacity(info.count);
-
-        // Clone the variable info and set the count to 1.
-        let mut var_info = info.clone();
-        // Set the count to 1 to represent a single item within the array.
-        var_info.count = 1;
-
-        for i in 0..info.count {
-            // Check the offset of the item
-            let offset_delta = i
-                .checked_mul(element_size)
-                .ok_or_else(|| {
+                // Try to instantiate the enum from the raw value
+                Self::try_from(raw).map_err(|raw| {
                     IRacingSDKError::parse_error(
-                        "VarData::from_bytes",
-                        format!(
-                            "Array element {i} offset calculation overflows usize for element size {element_size}"
-                        ),
+                        concat!("unknown ", stringify!($type), " value"),
+                        raw.to_string(),
                     )
-                })?;
+                })
+            }
+        }
+    )+};
+}
 
-            // Set the offset
-            var_info.offset = info
-                .offset
-                .checked_add(offset_delta)
-                .ok_or_else(|| IRacingSDKError::memory_invalid_input(info.offset, offset_delta))?;
+impl_enum_var_data!(
+    BroadcastMessage,
+    CameraSwitchFocusMode,
+    CarLeftRight,
+    ChatCommandMode,
+    ForceFeedbackCommandMode,
+    PaceMode,
+    PitCommandMode,
+    PitServiceStatus,
+    ReloadTexturesMode,
+    ReplayPositionMode,
+    ReplaySearchMode,
+    ReplayStateMode,
+    SessionState,
+    TelemetryCommandMode,
+    TrackLocation,
+    TrackSurface,
+    TrackWetness,
+    VideoCaptureMode,
+);
 
-            // Parse the variable and store it in the result.
-            result.push(T::from_bytes(data, &var_info)?);
+macro_rules! impl_bitmask_var_data {
+    ($($type:ty),+ $(,)?) => {$ (
+        impl VarData for $type {
+            fn validate_variable_type(data_type: VariableType) -> Result<()> {
+                <u32 as VarData>::validate_variable_type(data_type)
+            }
+
+            fn decode(bytes: &[u8], count: usize) -> Result<Self> {
+                let raw = <u32 as VarData>::decode(bytes, count)?;
+                Ok(Self::from(raw))
+            }
+        }
+    )+};
+}
+
+impl_bitmask_var_data!(
+    CameraState,
+    EngineWarnings,
+    PaceFlags,
+    PitServiceFlags,
+    SessionFlags,
+);
+
+impl VarData for IncidentFlags {
+    fn validate_variable_type(data_type: VariableType) -> Result<()> {
+        if matches!(data_type, VariableType::BitField | VariableType::Integer) {
+            Ok(())
+        } else {
+            Err(IRacingSDKError::type_conversion(
+                VariableType::BitField,
+                data_type,
+            ))
+        }
+    }
+
+    fn decode(bytes: &[u8], count: usize) -> Result<Self> {
+        let raw = <u32 as VarData>::decode(bytes, count)?;
+        Ok(Self::from(raw))
+    }
+}
+
+impl<T: VarData> VarData for Vec<T> {
+    fn validate_variable_type(data_type: VariableType) -> Result<()> {
+        T::validate_variable_type(data_type)
+    }
+
+    fn decode(bytes: &[u8], count: usize) -> Result<Self> {
+        if count == 0 || !bytes.len().is_multiple_of(count) {
+            return Err(IRacingSDKError::parse_error(
+                "Vec<T>",
+                "Invalid array dimensions",
+            ));
         }
 
-        Ok(result)
+        let element_size = bytes.len() / count;
+
+        if element_size == 0 {
+            return Err(IRacingSDKError::parse_error(
+                "Vec<T>",
+                "Element size cannot be zero",
+            ));
+        }
+
+        bytes
+            .chunks_exact(element_size)
+            .map(|chunk| T::decode(chunk, 1))
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::irsdk::VariableType;
+    use crate::irsdk::{VariableHeader, VariableType};
     use std::fmt::Debug;
 
-    fn variable_info(data_type: VariableType, offset: usize) -> VariableInfo {
-        VariableInfo {
-            name: "test".to_string(),
-            data_type,
-            offset,
-            count: 1,
-            count_as_time: false,
-            units: String::new(),
-            description: String::new(),
-        }
-    }
-
-    fn assert_type_conversion<T: VarData>(data_type: VariableType) {
-        assert!(matches!(
-            T::from_bytes(&[], &variable_info(data_type, 3)),
-            Err(IRacingSDKError::TypeConversion { .. })
-        ));
-    }
-
-    fn assert_memory<T: VarData>(data_type: VariableType) {
-        assert!(matches!(
-            T::from_bytes(&[], &variable_info(data_type, 3)),
-            Err(IRacingSDKError::Memory { offset: 3, .. })
-        ));
+    fn variable_info(data_type: VariableType, offset: i32, count: i32) -> VariableInfo {
+        let header = VariableHeader::new(data_type, offset, count, false, "test", "", "").unwrap();
+        let frame_size = offset as usize + data_type.byte_size() * count as usize;
+        VariableInfo::try_from_header(&header, frame_size).unwrap()
     }
 
     fn assert_array_pair<T: VarData + Debug + PartialEq>(
@@ -137,8 +247,7 @@ mod tests {
         data.extend_from_slice(first);
         data.extend_from_slice(second);
 
-        let mut info = variable_info(data_type, 1);
-        info.count = 2;
+        let info = variable_info(data_type, 1, 2);
         assert_eq!(Vec::<T>::from_bytes(&data, &info).unwrap(), expected);
     }
 
@@ -147,7 +256,7 @@ mod tests {
         assert_eq!(
             f32::from_bytes(
                 &[0, 0, 0, 0x20, 0x41],
-                &variable_info(VariableType::Float, 1)
+                &variable_info(VariableType::Float, 1, 1)
             )
             .unwrap(),
             10.0
@@ -155,16 +264,16 @@ mod tests {
         assert_eq!(
             i32::from_bytes(
                 &[0, 0x78, 0x56, 0x34, 0x12],
-                &variable_info(VariableType::Integer, 1)
+                &variable_info(VariableType::Integer, 1, 1)
             )
             .unwrap(),
             0x1234_5678
         );
-        assert!(bool::from_bytes(&[0, 2], &variable_info(VariableType::Boolean, 1)).unwrap());
+        assert!(bool::from_bytes(&[0, 1], &variable_info(VariableType::Boolean, 1, 1)).unwrap());
         assert_eq!(
             BitField::from_bytes(
                 &[0, 0x78, 0x56, 0x34, 0x12],
-                &variable_info(VariableType::BitField, 1),
+                &variable_info(VariableType::BitField, 1, 1),
             )
             .unwrap()
             .value(),
@@ -173,7 +282,7 @@ mod tests {
         assert_eq!(
             f64::from_bytes(
                 &[0, 0, 0, 0, 0, 0, 0, 0x24, 0x40],
-                &variable_info(VariableType::Double, 1),
+                &variable_info(VariableType::Double, 1, 1),
             )
             .unwrap(),
             10.0
@@ -181,33 +290,71 @@ mod tests {
     }
 
     #[test]
-    fn fixed_width_scalars_check_type_before_reading() {
-        assert_type_conversion::<f32>(VariableType::Integer);
-        assert_type_conversion::<i32>(VariableType::Float);
-        assert_type_conversion::<bool>(VariableType::Character);
-        assert_type_conversion::<BitField>(VariableType::Integer);
-        assert_type_conversion::<f64>(VariableType::Float);
-        assert_type_conversion::<u8>(VariableType::Integer);
+    fn enum_and_bitmask_wire_types_still_decode_through_var_data() {
+        assert_eq!(
+            SessionState::from_bytes(
+                &i32::from(SessionState::Racing).to_le_bytes(),
+                &variable_info(VariableType::Integer, 0, 1),
+            )
+            .unwrap(),
+            SessionState::Racing
+        );
+        assert_eq!(
+            SessionFlags::from_bytes(
+                &SessionFlags::GREEN.bits().to_le_bytes(),
+                &variable_info(VariableType::BitField, 0, 1),
+            )
+            .unwrap(),
+            SessionFlags::GREEN
+        );
     }
 
     #[test]
-    fn compatible_fixed_width_scalars_report_memory_for_an_empty_buffer() {
-        assert_memory::<f32>(VariableType::Float);
-        assert_memory::<i32>(VariableType::Integer);
-        assert_memory::<bool>(VariableType::Boolean);
-        assert_memory::<BitField>(VariableType::BitField);
-        assert_memory::<f64>(VariableType::Double);
-        assert_memory::<u8>(VariableType::Character);
+    fn incident_flags_accept_bitfield_and_integer_storage() {
+        const RAW: u32 = 0x8000_0408;
+        for data_type in [VariableType::BitField, VariableType::Integer] {
+            let decoded =
+                IncidentFlags::from_bytes(&RAW.to_le_bytes(), &variable_info(data_type, 0, 1))
+                    .unwrap();
+            assert_eq!(decoded.bits(), RAW);
+        }
+    }
+
+    #[test]
+    fn decoding_uses_requested_type_and_region_width() {
+        let info = variable_info(VariableType::Integer, 1, 1);
+        assert_eq!(u32::from_bytes(&[0, 1, 0, 0, 0], &info).unwrap(), 1);
+        assert!(matches!(
+            u8::from_bytes(&[0, 1, 0, 0, 0], &info),
+            Err(IRacingSDKError::WireSize {
+                expected: 1,
+                actual: 4
+            })
+        ));
+    }
+
+    #[test]
+    fn truncated_frame_reports_region_bounds_error() {
+        for info in [
+            variable_info(VariableType::Float, 3, 1),
+            variable_info(VariableType::Double, 3, 1),
+            variable_info(VariableType::Character, 3, 2),
+        ] {
+            assert!(matches!(
+                u8::from_bytes(&[], &info),
+                Err(IRacingSDKError::Parse { context, .. }) if context == "VarData::from_bytes"
+            ));
+        }
     }
 
     #[test]
     fn character_decoding_preserves_raw_byte_values() {
         assert_eq!(
-            u8::from_bytes(&[0xAA, 0], &variable_info(VariableType::Character, 1)).unwrap(),
+            u8::from_bytes(&[0xAA, 0], &variable_info(VariableType::Character, 1, 1)).unwrap(),
             0
         );
         assert_eq!(
-            u8::from_bytes(&[0xAA, 0xFF], &variable_info(VariableType::Character, 1)).unwrap(),
+            u8::from_bytes(&[0xAA, 0xFF], &variable_info(VariableType::Character, 1, 1)).unwrap(),
             0xFF
         );
     }
@@ -215,7 +362,7 @@ mod tests {
     #[test]
     fn arrays_decode_every_storage_type_at_a_nonzero_offset() {
         assert_array_pair(VariableType::Character, &[0], &[0xFF], [0_u8, 0xFF]);
-        assert_array_pair(VariableType::Boolean, &[0], &[2], [false, true]);
+        assert_array_pair(VariableType::Boolean, &[0], &[1], [false, true]);
         assert_array_pair(
             VariableType::Integer,
             &(-2_i32).to_le_bytes(),
@@ -243,34 +390,43 @@ mod tests {
     }
 
     #[test]
-    fn arrays_report_type_mismatch_and_later_element_bounds_errors() {
-        let mut info = variable_info(VariableType::Integer, 1);
-        info.count = 2;
+    fn arrays_report_element_width_and_frame_bounds_errors() {
+        let info = variable_info(VariableType::Integer, 1, 2);
         assert!(matches!(
-            Vec::<u8>::from_bytes(&[], &info),
-            Err(IRacingSDKError::TypeConversion { .. })
+            Vec::<u8>::from_bytes(&[0; 9], &info),
+            Err(IRacingSDKError::WireSize {
+                expected: 1,
+                actual: 4
+            })
         ));
 
-        info.data_type = VariableType::Character;
+        let info = variable_info(VariableType::Character, 1, 2);
         assert!(matches!(
             Vec::<u8>::from_bytes(&[0xAA, 42], &info),
-            Err(IRacingSDKError::Memory { offset: 2, .. })
+            Err(IRacingSDKError::Parse { context, .. }) if context == "VarData::from_bytes"
         ));
 
-        info.data_type = VariableType::Float;
+        let info = variable_info(VariableType::Float, 1, 2);
         let mut truncated = vec![0xAA];
         truncated.extend_from_slice(&1.5_f32.to_le_bytes());
         truncated.extend_from_slice(&[0, 0]);
         assert!(matches!(
             Vec::<f32>::from_bytes(&truncated, &info),
-            Err(IRacingSDKError::Memory { offset: 5, .. })
+            Err(IRacingSDKError::Parse { context, .. }) if context == "VarData::from_bytes"
         ));
     }
 
     #[test]
-    fn zero_count_array_is_empty() {
-        let mut info = variable_info(VariableType::Character, usize::MAX);
-        info.count = 0;
-        assert!(Vec::<u8>::from_bytes(&[], &info).unwrap().is_empty());
+    fn zero_count_array_is_rejected() {
+        assert!(matches!(
+            Vec::<u8>::decode(&[], 0),
+            Err(IRacingSDKError::Parse { context, .. }) if context == "Vec<T>"
+        ));
+        assert!(VariableHeader::new(VariableType::Character, 0, 0, false, "test", "", "").is_err());
+    }
+
+    #[test]
+    fn invalid_boolean_byte_is_rejected() {
+        assert!(bool::from_bytes(&[2], &variable_info(VariableType::Boolean, 0, 1)).is_err());
     }
 }

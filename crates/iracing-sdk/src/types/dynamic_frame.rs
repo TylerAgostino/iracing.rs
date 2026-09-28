@@ -10,6 +10,7 @@ use crate::{
     adapters::{AdapterValidation, FrameAdapter},
     types::telemetry_value::TelemetryValueProvider,
 };
+use iracing_irsdk::BitField;
 use std::sync::Arc;
 
 /// A self-contained view over a single telemetry frame supporting by-name lookups.
@@ -39,7 +40,7 @@ impl DynamicFrame {
     }
 
     /// Look up an SDK bitfield, or `None` if missing or the wrong type.
-    pub fn bitfield(&self, name: &str) -> Option<crate::BitField> {
+    pub fn bitfield(&self, name: &str) -> Option<BitField> {
         self.get(name)
     }
 
@@ -59,7 +60,7 @@ impl DynamicFrame {
     }
 
     /// Retrieves the variable from the frame by name.
-    pub fn value(&self, name: &str) -> crate::Result<Option<TelemetryValue>> {
+    pub fn value(&self, name: &str) -> Result<Option<TelemetryValue>> {
         let Some(info) = self.variable(name) else {
             return Ok(None);
         };
@@ -75,7 +76,7 @@ impl SchemaProvider for DynamicFrame {
 }
 
 impl TelemetryValueProvider for DynamicFrame {
-    fn telemetry_value(&self, info: &VariableInfo) -> crate::Result<TelemetryValue> {
+    fn telemetry_value(&self, info: &VariableInfo) -> Result<TelemetryValue> {
         TelemetryValue::decode(self.data.as_ref(), info)
     }
 }
@@ -98,53 +99,46 @@ impl FrameAdapter for DynamicFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{VariableInfo, VariableSchema, irsdk::VariableType};
-    use std::collections::HashMap;
+    use crate::{
+        VariableSchema,
+        irsdk::{VariableHeader, VariableType},
+    };
 
     #[test]
     fn dynamic_frame_basic_lookup() {
-        // Build minimal schema
-        let mut vars = HashMap::new();
-        vars.insert(
-            "RPM".to_string(),
-            VariableInfo {
-                name: "RPM".into(),
-                data_type: VariableType::Integer,
-                offset: 0,
-                count: 1,
-                count_as_time: false,
-                units: "rev/min".into(),
-                description: "Engine RPM".into(),
-            },
-        );
-        vars.insert(
-            "Speed".to_string(),
-            VariableInfo {
-                name: "Speed".into(),
-                data_type: VariableType::Float,
-                offset: 4,
-                count: 1,
-                count_as_time: false,
-                units: "m/s".into(),
-                description: "Vehicle speed".into(),
-            },
-        );
-        vars.insert(
-            "CarIdxLapDistPct".to_string(),
-            VariableInfo {
-                name: "CarIdxLapDistPct".into(),
-                data_type: VariableType::Float,
-                offset: 8,
-                count: 4,
-                count_as_time: false,
-                units: "%".into(),
-                description: "Per-car lap distance percentage".into(),
-            },
-        );
-        let schema = VariableSchema {
-            variables: vars,
-            frame_size: 24,
-        };
+        let headers = [
+            VariableHeader::new(
+                VariableType::Integer,
+                0,
+                1,
+                false,
+                "RPM",
+                "Engine RPM",
+                "rev/min",
+            )
+            .unwrap(),
+            VariableHeader::new(
+                VariableType::Float,
+                4,
+                1,
+                false,
+                "Speed",
+                "Vehicle speed",
+                "m/s",
+            )
+            .unwrap(),
+            VariableHeader::new(
+                VariableType::Float,
+                8,
+                4,
+                false,
+                "CarIdxLapDistPct",
+                "Per-car lap distance percentage",
+                "%",
+            )
+            .unwrap(),
+        ];
+        let schema = VariableSchema::try_from_headers(&headers, 24).unwrap();
 
         // Build frame bytes (Int32 + Float32 + four Float32 array elements)
         let mut data = vec![0u8; 24];

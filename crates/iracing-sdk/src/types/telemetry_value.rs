@@ -1,12 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{BitField, IRacingSDKError, Result, VarData, VariableInfo, irsdk::VariableType};
+use crate::{BitField, Result, VarData, VariableInfo, irsdk::VariableType};
 
 /// Runtime value type that can hold any telemetry data.
 ///
-/// SDK decoding produces only `Char`, `Bool`, `Int32`, `BitField`, `Float32`,
-/// `Float64`, and arrays. Other integer variants remain available for callers
-/// constructing values directly or reading previously serialized values.
+/// SDK decoding produces scalar values or arrays of those values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TelemetryValue {
     /// An 8-bit character value (`irsdk_char`).
@@ -28,57 +26,35 @@ pub enum TelemetryValue {
 impl TelemetryValue {
     /// Decodes the variable described by `info` from a complete telemetry frame.
     ///
-    /// `info.offset` is relative to the start of `data`; a zero element count
-    /// produces an empty [`Self::Array`].
+    /// `info.offset()` is relative to the start of `data`. A count of one
+    /// produces a scalar; a larger count produces an [`Self::Array`].
     ///
     /// # Errors
     ///
-    /// Returns an error if the metadata does not describe an SDK storage type,
-    /// its extent overflows, or the requested bytes are outside `data`.
+    /// Returns an error if the requested bytes are outside `data` or cannot be
+    /// decoded as the storage type described by `info`.
     pub fn decode(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        match info.count {
-            0 => Ok(Self::Array(Vec::new())),
-            1 => Self::decode_scalar(data, info),
-            _ => Self::decode_array(data, info),
-        }
-    }
-
-    fn decode_scalar(data: &[u8], info: &VariableInfo) -> Result<Self> {
         match info.data_type {
-            VariableType::Character => u8::from_bytes(data, info).map(Self::Char),
-            VariableType::BitField => BitField::from_bytes(data, info).map(Self::BitField),
-            VariableType::Boolean => bool::from_bytes(data, info).map(Self::Bool),
-            VariableType::Integer => i32::from_bytes(data, info).map(Self::Int32),
-            VariableType::Float => f32::from_bytes(data, info).map(Self::Float32),
-            VariableType::Double => f64::from_bytes(data, info).map(Self::Float64),
+            VariableType::Character => Self::decode_typed::<u8>(data, info, Self::Char),
+            VariableType::BitField => Self::decode_typed::<BitField>(data, info, Self::BitField),
+            VariableType::Boolean => Self::decode_typed::<bool>(data, info, Self::Bool),
+            VariableType::Integer => Self::decode_typed::<i32>(data, info, Self::Int32),
+            VariableType::Float => Self::decode_typed::<f32>(data, info, Self::Float32),
+            VariableType::Double => Self::decode_typed::<f64>(data, info, Self::Float64),
         }
     }
 
-    fn decode_array(data: &[u8], info: &VariableInfo) -> Result<Self> {
-        let element_size = info.data_type.byte_size();
-        let mut values = Vec::with_capacity(info.count);
-        let mut element_info = info.clone();
-        element_info.count = 1;
-
-        for index in 0..info.count {
-            let offset_delta = index.checked_mul(element_size).ok_or_else(|| {
-                IRacingSDKError::parse_error(
-                    "TelemetryValue::decode_array",
-                    format!(
-                        "Array element {index} offset calculation overflows usize for element size {element_size}"
-                    ),
-                )
-            })?;
-
-            element_info.offset = info
-                .offset
-                .checked_add(offset_delta)
-                .ok_or_else(|| IRacingSDKError::memory_invalid_input(info.offset, offset_delta))?;
-
-            values.push(Self::decode_scalar(data, &element_info)?);
+    fn decode_typed<T: VarData>(
+        data: &[u8],
+        info: &VariableInfo,
+        wrap: fn(T) -> Self,
+    ) -> Result<Self> {
+        if info.count() == 1 {
+            T::from_bytes(data, info).map(wrap)
+        } else {
+            Vec::<T>::from_bytes(data, info)
+                .map(|values| Self::Array(values.into_iter().map(wrap).collect()))
         }
-
-        Ok(Self::Array(values))
     }
 }
 
@@ -89,4 +65,95 @@ impl TelemetryValue {
 pub trait TelemetryValueProvider {
     /// Decodes the telemetry value described by `info`.
     fn telemetry_value(&self, info: &VariableInfo) -> Result<TelemetryValue>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::irsdk::VariableHeader;
+
+    fn info(data_type: VariableType, offset: usize, count: usize) -> VariableInfo {
+        let header = VariableHeader::new(
+            data_type,
+            i32::try_from(offset).unwrap(),
+            i32::try_from(count).unwrap(),
+            false,
+            "test",
+            "",
+            "",
+        )
+        .unwrap();
+        VariableInfo::try_from_header(&header, offset + data_type.byte_size() * count).unwrap()
+    }
+
+    #[test]
+    fn dispatches_every_storage_type_for_scalars_and_arrays() {
+        let cases = [
+            (
+                VariableType::Character,
+                vec![0, 0xFF],
+                [TelemetryValue::Char(0), TelemetryValue::Char(0xFF)],
+            ),
+            (
+                VariableType::Boolean,
+                vec![0, 1],
+                [TelemetryValue::Bool(false), TelemetryValue::Bool(true)],
+            ),
+            (
+                VariableType::Integer,
+                [(-2_i32).to_le_bytes(), 123_i32.to_le_bytes()].concat(),
+                [TelemetryValue::Int32(-2), TelemetryValue::Int32(123)],
+            ),
+            (
+                VariableType::BitField,
+                [1_u32.to_le_bytes(), 0x8000_0000_u32.to_le_bytes()].concat(),
+                [
+                    TelemetryValue::BitField(BitField::new(1)),
+                    TelemetryValue::BitField(BitField::new(0x8000_0000)),
+                ],
+            ),
+            (
+                VariableType::Float,
+                [(-1.5_f32).to_le_bytes(), 10.25_f32.to_le_bytes()].concat(),
+                [
+                    TelemetryValue::Float32(-1.5),
+                    TelemetryValue::Float32(10.25),
+                ],
+            ),
+            (
+                VariableType::Double,
+                [(-1.5_f64).to_le_bytes(), 10.25_f64.to_le_bytes()].concat(),
+                [
+                    TelemetryValue::Float64(-1.5),
+                    TelemetryValue::Float64(10.25),
+                ],
+            ),
+        ];
+
+        for (data_type, bytes, expected) in cases {
+            let mut frame = vec![0xAA];
+            frame.extend_from_slice(&bytes);
+
+            let scalar = info(data_type, 1, 1);
+            assert_eq!(
+                TelemetryValue::decode(&frame, &scalar).unwrap(),
+                expected[0],
+                "scalar {data_type:?}"
+            );
+
+            let array = info(data_type, 1, 2);
+            assert_eq!(
+                TelemetryValue::decode(&frame, &array).unwrap(),
+                TelemetryValue::Array(expected.to_vec()),
+                "array {data_type:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn propagates_var_data_errors() {
+        let info = info(VariableType::Boolean, 1, 2);
+        assert!(TelemetryValue::decode(&[0xAA, 0, 2], &info).is_err());
+        assert!(TelemetryValue::decode(&[0xAA, 0], &info).is_err());
+    }
 }

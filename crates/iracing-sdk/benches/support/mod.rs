@@ -13,10 +13,11 @@ pub mod telemetry_pipeline;
 pub mod workloads;
 
 use iracing_sdk::{
-    BitField, FramePacket, TelemetryValue, VariableInfo, VariableSchema, irsdk::VariableType,
+    BitField, FramePacket, TelemetryValue, VariableInfo, VariableSchema,
+    irsdk::{VariableHeader, VariableType},
 };
 use serde::Deserialize;
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
 const LIVE_SCHEMA_PATH: &str = "../../docs/reference/live-variable-schema.yml";
 const BENCHMARK_TICK: u32 = 1;
@@ -24,7 +25,24 @@ const BENCHMARK_SESSION_VERSION: u32 = 1;
 
 #[derive(Deserialize)]
 struct VariableSchemaReference {
-    examples: Vec<VariableSchema>,
+    examples: Vec<CapturedSchema>,
+}
+
+#[derive(Deserialize)]
+struct CapturedSchema {
+    frame_size: usize,
+    variables: HashMap<String, CapturedVariable>,
+}
+
+#[derive(Deserialize)]
+struct CapturedVariable {
+    name: String,
+    data_type: VariableType,
+    offset: i32,
+    count: i32,
+    count_as_time: bool,
+    units: String,
+    description: String,
 }
 
 /// A deterministic telemetry frame whose layout matches the checked-in live
@@ -59,11 +77,30 @@ pub fn full_frame_fixture() -> FullFrameFixture {
     });
     let reference: VariableSchemaReference = serde_yaml_ng::from_str(&schema_yaml)
         .unwrap_or_else(|error| panic!("failed to parse {}: {error}", schema_path.display()));
-    let schema = reference
+    let captured = reference
         .examples
         .into_iter()
         .next()
         .unwrap_or_else(|| panic!("{} contains no schema examples", schema_path.display()));
+    let headers: Vec<_> = captured
+        .variables
+        .into_iter()
+        .map(|(name, variable)| {
+            assert_eq!(name, variable.name, "capture variable key and name differ");
+            VariableHeader::new(
+                variable.data_type,
+                variable.offset,
+                variable.count,
+                variable.count_as_time,
+                &name,
+                &variable.description,
+                &variable.units,
+            )
+            .unwrap_or_else(|error| panic!("invalid capture variable `{name}`: {error}"))
+        })
+        .collect();
+    let schema = VariableSchema::try_from_headers(&headers, captured.frame_size)
+        .unwrap_or_else(|error| panic!("invalid captured schema: {error}"));
 
     let mut data = vec![0; schema.frame_size];
     populate_frame(&mut data, &schema);
@@ -91,7 +128,8 @@ pub fn require_variable<'a>(
         "benchmark variable `{name}` has an unexpected telemetry type"
     );
     assert_eq!(
-        info.count, expected_count,
+        info.count(),
+        expected_count,
         "benchmark variable `{name}` has an unexpected element count"
     );
 
@@ -102,8 +140,8 @@ pub fn require_variable<'a>(
 pub fn ordered_variables(schema: &VariableSchema) -> Vec<&VariableInfo> {
     let mut variables: Vec<_> = schema.variables.values().collect();
     variables.sort_unstable_by(|left, right| {
-        left.offset
-            .cmp(&right.offset)
+        left.offset()
+            .cmp(&right.offset())
             .then_with(|| left.name.cmp(&right.name))
     });
 
@@ -125,37 +163,40 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
         let byte_len = info
             .data_type
             .byte_size()
-            .checked_mul(info.count)
+            .checked_mul(info.count())
             .unwrap_or_else(|| {
                 panic!(
                     "byte length overflow for benchmark variable `{}`",
                     info.name
                 )
             });
-        let end = info.offset.checked_add(byte_len).unwrap_or_else(|| {
+        let end = info.offset().checked_add(byte_len).unwrap_or_else(|| {
             panic!("end offset overflow for benchmark variable `{}`", info.name)
         });
         assert!(
             end <= packet.data.len(),
             "benchmark variable `{}` at offset {} with type {:?} and count {} exceeds frame size {}",
             info.name,
-            info.offset,
+            info.offset(),
             info.data_type,
-            info.count,
+            info.count(),
             packet.data.len()
         );
 
         let actual = TelemetryValue::decode(packet.data.as_ref(), info).unwrap_or_else(|error| {
             panic!(
                 "failed to decode benchmark variable `{}` at offset {} with type {:?} and count {}: {error}",
-                info.name, info.offset, info.data_type, info.count
+                info.name, info.offset(), info.data_type, info.count()
             )
         });
         let expected = expected_value(info);
         assert_eq!(
-            actual, expected,
+            actual,
+            expected,
             "decoded sentinel mismatch for benchmark variable `{}` with type {:?} and count {}",
-            info.name, info.data_type, info.count
+            info.name,
+            info.data_type,
+            info.count()
         );
     }
 }
@@ -164,16 +205,16 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
 pub fn total_elements(variables: &[&VariableInfo]) -> usize {
     variables
         .iter()
-        .try_fold(0_usize, |total, info| total.checked_add(info.count))
+        .try_fold(0_usize, |total, info| total.checked_add(info.count()))
         .expect("full-frame benchmark element count overflow")
 }
 
 fn expected_value(info: &VariableInfo) -> TelemetryValue {
-    if info.count == 1 {
+    if info.count() == 1 {
         expected_scalar(info.data_type, 0)
     } else {
         TelemetryValue::Array(
-            (0..info.count)
+            (0..info.count())
                 .map(|index| expected_scalar(info.data_type, index))
                 .collect(),
         )
@@ -197,8 +238,8 @@ fn expected_scalar(data_type: VariableType, index: usize) -> TelemetryValue {
 
 fn populate_frame(data: &mut [u8], schema: &VariableSchema) {
     for info in ordered_variables(schema) {
-        for index in 0..info.count {
-            let offset = info.offset + index * info.data_type.byte_size();
+        for index in 0..info.count() {
+            let offset = info.offset() + index * info.data_type.byte_size();
             let value = (index as u32).wrapping_add(1);
 
             match info.data_type {

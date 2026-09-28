@@ -71,21 +71,30 @@ pub use validation::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{VariableInfo, irsdk::VariableType};
+    use crate::{
+        VariableInfo,
+        irsdk::{VariableHeader, VariableType},
+    };
+
+    fn speed_info() -> VariableInfo {
+        let header = VariableHeader::new(
+            VariableType::Float,
+            0,
+            1,
+            false,
+            "Speed",
+            "Car speed",
+            "mph",
+        )
+        .unwrap();
+        VariableInfo::try_from_header(&header, 4).unwrap()
+    }
 
     #[test]
     fn adapter_validation_creation() {
         let extraction_plan = vec![FieldExtraction::Required {
             name: "Speed".to_string(),
-            var_info: VariableInfo {
-                name: "Speed".to_string(),
-                data_type: VariableType::Float,
-                offset: 0,
-                count: 1,
-                count_as_time: false,
-                units: "mph".to_string(),
-                description: "Car speed".to_string(),
-            },
+            var_info: speed_info(),
         }];
 
         let validation = AdapterValidation::new(extraction_plan);
@@ -99,15 +108,7 @@ mod tests {
     fn field_extraction_properties() {
         let required_field = FieldExtraction::Required {
             name: "Speed".to_string(),
-            var_info: VariableInfo {
-                name: "Speed".to_string(),
-                data_type: VariableType::Float,
-                offset: 0,
-                count: 1,
-                count_as_time: false,
-                units: "mph".to_string(),
-                description: "Car speed".to_string(),
-            },
+            var_info: speed_info(),
         };
 
         assert_eq!(required_field.field_name(), Some("Speed"));
