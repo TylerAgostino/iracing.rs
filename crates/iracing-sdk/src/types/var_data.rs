@@ -74,7 +74,7 @@ impl<T: VarData> VarData for Vec<T> {
             )
         })?;
         bytes
-            .chunks_exact(info.data_type.byte_size())
+            .chunks_exact(info.data_type().byte_size())
             .map(|chunk| T::from_bytes(chunk, &scalar))
             .collect()
     }
@@ -121,8 +121,8 @@ macro_rules! impl_bitmask_var_data {
     ($($type:ty),+ $(,)?) => {$ (
         impl VarData for $type {
             fn from_bytes(data: &[u8], info: &VariableInfo) -> crate::Result<Self> {
-                if info.data_type != iracing_irsdk::VariableType::BitField {
-                    return Err(IRacingSDKError::type_conversion("BitField", info.data_type));
+                if info.data_type() != iracing_irsdk::VariableType::BitField {
+                    return Err(IRacingSDKError::type_conversion("BitField", info.data_type()));
                 }
 
                 <BitField as VarData>::from_bytes(data, info).map(Self::from)
@@ -141,7 +141,7 @@ impl_bitmask_var_data!(
 
 impl VarData for IncidentFlags {
     fn from_bytes(data: &[u8], info: &VariableInfo) -> crate::Result<Self> {
-        match info.data_type {
+        match info.data_type() {
             iracing_irsdk::VariableType::BitField => {
                 <BitField as VarData>::from_bytes(data, info).map(Self::from)
             }

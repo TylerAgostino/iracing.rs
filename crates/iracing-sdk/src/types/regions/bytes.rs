@@ -1,12 +1,12 @@
 use crate::{IRacingSDKError, Result};
 #[cfg(feature = "codegen")]
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::ops::Range;
 
 /// Offset and length for a byte span within an SDK data source.
 #[cfg_attr(feature = "codegen", derive(JsonSchema))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
 pub struct ByteRegion {
     /// Start offset of the region, measured in bytes from the source origin.
     offset: usize,

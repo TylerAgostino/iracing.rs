@@ -2,7 +2,7 @@
 use schemars::JsonSchema;
 
 use iracing_irsdk::VariableHeader;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{num::NonZeroUsize, ops::Range};
 
 use crate::{IRacingSDKError, Result};
@@ -11,7 +11,7 @@ use super::ByteRegion;
 
 /// Frame-relative byte region occupied by one telemetry variable.
 #[cfg_attr(feature = "codegen", derive(JsonSchema))]
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize)]
 pub struct VariableRegion {
     region: ByteRegion,
     count: NonZeroUsize,

@@ -87,7 +87,8 @@ pub fn require_variable<'a>(
         .unwrap_or_else(|| panic!("full-frame benchmark requires variable `{name}`"));
 
     assert_eq!(
-        info.data_type, expected_type,
+        info.data_type(),
+        expected_type,
         "benchmark variable `{name}` has an unexpected telemetry type"
     );
     assert_eq!(
@@ -124,7 +125,7 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
 
     for info in variables {
         let byte_len = info
-            .data_type
+            .data_type()
             .byte_size()
             .checked_mul(info.count())
             .unwrap_or_else(|| {
@@ -141,7 +142,7 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
             "benchmark variable `{}` at offset {} with type {:?} and count {} exceeds frame size {}",
             info.name,
             info.offset(),
-            info.data_type,
+            info.data_type(),
             info.count(),
             packet.data.len()
         );
@@ -149,7 +150,7 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
         let actual = TelemetryValue::decode(packet.data.as_ref(), info).unwrap_or_else(|error| {
             panic!(
                 "failed to decode benchmark variable `{}` at offset {} with type {:?} and count {}: {error}",
-                info.name, info.offset(), info.data_type, info.count()
+                info.name, info.offset(), info.data_type(), info.count()
             )
         });
         let expected = expected_value(info);
@@ -158,7 +159,7 @@ pub fn verify_full_frame(packet: &FramePacket, variables: &[&VariableInfo]) {
             expected,
             "decoded sentinel mismatch for benchmark variable `{}` with type {:?} and count {}",
             info.name,
-            info.data_type,
+            info.data_type(),
             info.count()
         );
     }
@@ -174,11 +175,11 @@ pub fn total_elements(variables: &[&VariableInfo]) -> usize {
 
 fn expected_value(info: &VariableInfo) -> TelemetryValue {
     if info.count() == 1 {
-        expected_scalar(info.data_type, 0)
+        expected_scalar(info.data_type(), 0)
     } else {
         TelemetryValue::Array(
             (0..info.count())
-                .map(|index| expected_scalar(info.data_type, index))
+                .map(|index| expected_scalar(info.data_type(), index))
                 .collect(),
         )
     }
@@ -202,10 +203,10 @@ fn expected_scalar(data_type: VariableType, index: usize) -> TelemetryValue {
 fn populate_frame(data: &mut [u8], schema: &VariableSchema) {
     for info in ordered_variables(schema) {
         for index in 0..info.count() {
-            let offset = info.offset() + index * info.data_type.byte_size();
+            let offset = info.offset() + index * info.data_type().byte_size();
             let value = (index as u32).wrapping_add(1);
 
-            match info.data_type {
+            match info.data_type() {
                 VariableType::Character => data[offset] = value as u8,
                 VariableType::Integer => {
                     data[offset..offset + 4].copy_from_slice(&(value as i32).to_le_bytes());

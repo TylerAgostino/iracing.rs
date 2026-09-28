@@ -26,7 +26,7 @@ pub struct VariableInfo {
     pub name: String,
     /// # Data type
     /// Data type of the variable
-    pub data_type: IRSDKVariableType,
+    data_type: IRSDKVariableType,
     /// Region for parsing
     region: VariableRegion,
     /// # Count as time
@@ -120,6 +120,11 @@ impl VariableInfo {
     /// Returns the validated frame-relative region.
     pub fn region(&self) -> VariableRegion {
         self.region
+    }
+
+    /// Returns the variable's storage type.
+    pub fn data_type(&self) -> IRSDKVariableType {
+        self.data_type
     }
 
     /// Returns the starting byte offset within a frame.
@@ -263,7 +268,7 @@ mod tests {
 
         let decoded: VariableInfo = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.region().as_range(), 4..12);
-        assert_eq!(decoded.data_type, VariableType::Float);
+        assert_eq!(decoded.data_type(), VariableType::Float);
     }
 
     #[test]
