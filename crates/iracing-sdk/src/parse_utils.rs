@@ -102,8 +102,8 @@ pub(crate) fn decode_bytes_for_variable_info<const SIZE: usize, T>(
     expected: VariableType,
     decode: impl FnOnce([u8; SIZE]) -> T,
 ) -> Result<T> {
-    if info.data_type != expected {
-        return Err(IRacingSDKError::type_conversion(expected, info.data_type));
+    if info.data_type() != expected {
+        return Err(IRacingSDKError::type_conversion(expected, info.data_type()));
     }
 
     Ok(decode(*bytes_at::<SIZE>(data, info.offset())?))

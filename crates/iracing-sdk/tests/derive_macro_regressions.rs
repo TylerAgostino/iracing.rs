@@ -14,7 +14,7 @@ use iracing_sdk_derive::IRacingTelemetryFrame;
 /// ```
 /// let info = make_variable_info("Speed", VariableType::Float, 0);
 /// assert_eq!(info.name, "Speed");
-/// assert_eq!(info.data_type, VariableType::Float);
+/// assert_eq!(info.data_type(), VariableType::Float);
 /// assert_eq!(info.offset(), 0);
 /// assert_eq!(info.count(), 1);
 /// ```
