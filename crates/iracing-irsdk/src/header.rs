@@ -278,16 +278,24 @@ mod tests {
         header.buffer_count = 2;
         header.current_buffer = 1;
 
-        assert_eq!(header.buffer(0).map(|buffer| buffer.tick_count), Some(10));
-        assert_eq!(header.buffer(1).map(|buffer| buffer.tick_count), Some(9));
-        assert!(header.buffer(2).is_none());
         assert_eq!(
-            header.current_buffer().map(|buffer| buffer.tick_count),
+            header.variable_buffer(0).map(|buffer| buffer.tick_count),
+            Some(10)
+        );
+        assert_eq!(
+            header.variable_buffer(1).map(|buffer| buffer.tick_count),
+            Some(9)
+        );
+        assert!(header.variable_buffer(2).is_none());
+        assert_eq!(
+            header
+                .current_variable_buffer()
+                .map(|buffer| buffer.tick_count),
             Some(9)
         );
 
         header.current_buffer = 2;
-        assert!(header.current_buffer().is_none());
+        assert!(header.current_variable_buffer().is_none());
     }
 
     #[test]
@@ -296,8 +304,8 @@ mod tests {
 
         for count in [-1, 0, Header::MAX_BUFFERS as i32 + 1] {
             header.buffer_count = count;
-            assert!(header.buffer(0).is_none());
-            assert!(header.current_buffer().is_none());
+            assert!(header.variable_buffer(0).is_none());
+            assert!(header.current_variable_buffer().is_none());
         }
     }
 
