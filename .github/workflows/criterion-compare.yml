@@ -68,10 +68,10 @@ jobs:
             fi
           done <<< "$EXPERIMENT_PATHS"
 
-          for input in Cargo.toml Cargo.lock .cargo/config.toml crates/iracing-sdk/Cargo.toml; do
+          for input in Cargo.toml Cargo.lock .cargo/config.toml crates/iracing-sdk/Cargo.toml crates/iracing-sdk-derive/Cargo.toml; do
             cmp -s "pr-base/$input" "pr-head/$input" || echo "$input" >> "$RUNNER_TEMP/build-changed.txt"
           done
-          for source in crates/iracing-sdk/src crates/iracing-irsdk/src; do
+          for source in crates/iracing-sdk/src crates/iracing-irsdk/src crates/iracing-sdk-derive/src; do
             if ! diff -qr "pr-base/$source" "pr-head/$source" >/dev/null; then
               echo "$source/**" >> "$RUNNER_TEMP/build-changed.txt"
             fi
