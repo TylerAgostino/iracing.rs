@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use type_layout::TypeLayout;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -5,7 +6,18 @@ use crate::{Result, parse_utils::read_wire_bytes};
 
 /// iRacing variable buffer information
 #[repr(C)]
-#[derive(Debug, Clone, Copy, TypeLayout, FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    TypeLayout,
+    FromBytes,
+    IntoBytes,
+    KnownLayout,
+    Immutable,
+)]
 pub struct VariableBuffer {
     /// Tick count when buffer was written
     pub tick_count: i32,
@@ -14,6 +26,7 @@ pub struct VariableBuffer {
     /// Tick count written before a frame write begins, used for torn-read detection
     pub tick_count_begin: i32,
     /// Padding to maintain alignment
+    #[serde(skip)]
     _pad: [i32; 1],
 }
 

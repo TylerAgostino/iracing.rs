@@ -1,6 +1,9 @@
 use std::{borrow::Cow, ops::Range};
 
-use serde::ser::{Serialize, SerializeStruct, Serializer};
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    ser::{SerializeStruct, Serializer},
+};
 use type_layout::TypeLayout;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
@@ -12,8 +15,8 @@ use super::constants::{IRSDK_MAX_DESC, IRSDK_MAX_STRING};
 
 /// iRacing variable header structure matching the C SDK layout.
 ///
-/// Serialization exposes the metadata as named fields, decodes the fixed-width
-/// text fields, and omits ABI padding.
+/// Serde exposes metadata as named fields, decodes the fixed-width text fields,
+/// and omits ABI padding. Deserialization validates fields through [`Self::new`].
 #[repr(C)]
 #[derive(Debug, Clone, Copy, TypeLayout, TryFromBytes, IntoBytes, KnownLayout, Immutable)]
 pub struct VariableHeader {
@@ -49,6 +52,36 @@ impl Serialize for VariableHeader {
         header.serialize_field("description", &self.description())?;
         header.serialize_field("unit", &self.unit())?;
         header.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for VariableHeader {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Metadata {
+            variable_type: VariableType,
+            offset: i32,
+            count: i32,
+            count_as_time: bool,
+            name: String,
+            description: String,
+            unit: String,
+        }
+
+        let metadata = Metadata::deserialize(deserializer)?;
+        Self::new(
+            metadata.variable_type,
+            metadata.offset,
+            metadata.count,
+            metadata.count_as_time,
+            &metadata.name,
+            &metadata.description,
+            &metadata.unit,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 

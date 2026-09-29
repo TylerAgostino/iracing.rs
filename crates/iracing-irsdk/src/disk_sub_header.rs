@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::io::Read;
 use type_layout::TypeLayout;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -13,7 +14,18 @@ use crate::{
 /// `header.var_header_offset - IRSDK_DISK_SUBHEADER_SIZE`) and provides timing and record-count
 /// metadata specific to `.ibt` replay files.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, TypeLayout, FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    TypeLayout,
+    FromBytes,
+    IntoBytes,
+    KnownLayout,
+    Immutable,
+)]
 pub struct DiskSubHeader {
     /// Unix timestamp (`time_t`) of the session start date.
     pub start_date: i64,

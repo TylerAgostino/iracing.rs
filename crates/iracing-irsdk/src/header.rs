@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::{io::Read, ops::Range};
 use type_layout::TypeLayout;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -10,7 +11,18 @@ use crate::{
 
 /// An iRacing SDK header.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, TypeLayout, FromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    TypeLayout,
+    FromBytes,
+    IntoBytes,
+    KnownLayout,
+    Immutable,
+)]
 pub struct Header {
     /// API version
     pub version: i32,
@@ -37,6 +49,7 @@ pub struct Header {
     /// Index of most recently written buffer (`irsdk_header::curBuf`)
     pub current_buffer: u8,
     /// Alignment padding (`irsdk_header::pad1`)
+    #[serde(skip)]
     _pad: [u8; 3],
     /// Telemetry buffer descriptors
     pub buffers: [VariableBuffer; Self::MAX_BUFFERS],
