@@ -8,6 +8,7 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/iracing-irsdk/**"
+      - "crates/iracing-sdk-derive/**"
       - "crates/iracing-sdk/Cargo.toml"
       - "crates/iracing-sdk/src/ibt/**"
       - "crates/iracing-sdk/src/types/ibt/**"

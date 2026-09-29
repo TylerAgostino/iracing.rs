@@ -4,8 +4,8 @@
 
 - `cargo test -p iracing-sdk --all-targets` runs the crate test suite; add `-- types::tests::bitfield_constructor_works` to laser in on a single test.
 - `cargo test -p iracing-sdk --doc` followed by `RUSTDOCFLAGS="-D warnings" cargo doc -p iracing-sdk --no-deps` mirrors this crate's docs CI job.
-- `cargo check -p iracing-sdk --examples --bins` catches example/bin drift early.
-- Enable schema tools with `cargo build -p iracing-sdk --features codegen,schema-discovery` when generating schema outputs.
+- `cargo check -p iracing-sdk --examples` checks SDK examples; `cargo check -p iracing-sdk-cli --bins --all-features` checks relocated CLI binaries.
+- Enable schema tools with `cargo build -p iracing-sdk-cli --features codegen,schema-discovery` when generating schema outputs.
 
 ## Key APIs & Layout
 
@@ -20,7 +20,7 @@
 - `telemetry/`: shared frame-read loop plus explicit delivery and session policies. `LatestDelivery` is the live default, while `Telemetry::spawn_ibt` selects `OnDemandDelivery`.
 - `adapters/`: `FrameAdapter`, `AdapterValidation`, `FieldExtraction`, `DefaultValue`, and `SchemaProvider` support typed per-frame extraction.
 - `windows/`: `WindowsConnection`, `WaitResult`, shared-memory connection code, and broadcast helpers. Keep everything behind `#[cfg(windows)]`.
-- `src/bin/`: CLI and schema-generation binaries; codegen binaries require the `codegen` feature, and discovery overlays require `schema-discovery`.
+- `../iracing-sdk-cli/src/bin/`: CLI and schema-generation binaries; codegen binaries require the `codegen` feature, and discovery overlays require `schema-discovery`.
 - `examples/`: cross-platform disk examples plus Windows live/broadcast examples.
 - `tests/`: integration and derive macro regression tests.
 - `benches/`: Criterion-compatible targets gated by `benchmark`; CodSpeed runs CPU targets, while delivery and IBT remain local wall-time Criterion.
@@ -32,12 +32,10 @@
 
 - Gate actual shared-memory, live-provider, and Win32 broadcast transports with `#[cfg(windows)]`. Keep portable typed commands and the non-Windows `LiveConnection` builder stub available where the public API already promises them.
 - Recorded and live sources have different delivery semantics. IBT replay is explicitly started and advances one shared cursor only after every active subscription asks for its next item; live delivery remains latest-wins.
-- Tokio is a target-specific internal dependency: native targets use full Tokio, while `wasm32` builds are limited to Tokio's WASM-safe subset.
-- Only gate APIs that require incompatible Tokio runtime behavior; `tokio::sync` usage can stay in shared code.
 
 ## Examples & Binaries
 
-- `.cargo/config.toml` exposes aliases like `cargo ibt-to-csv`, `cargo session`, `cargo broadcast`; they map to bins in this crate.
+- `.cargo/config.toml` exposes aliases like `cargo ibt-to-csv`, `cargo session`, `cargo broadcast`; they map to bins in `iracing-sdk-cli`.
 - Use `cargo session schema type`, `cargo session schema ibt --path ./session.ibt`, `cargo session discover ibt --path ./session.ibt`, and `cargo session snapshot ibt --path ./session.ibt` for session schemas, discovery, and snapshots; `schema live`, `discover live`, and `snapshot live` require Windows. Output defaults to stdout; use `--output <file>` for a file. The alias enables `codegen,schema-discovery`.
 - Keep cross-platform examples (`ibt-read-frame`, `manual-frame-adapter`, `ibt-subscribe`, `enum-bitfields-ibt`) runnable on non-Windows machines.
 - Keep adapter examples importing from `iracing_sdk`; derive examples should rely on the `derive` feature re-export from this crate.

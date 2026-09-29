@@ -18,36 +18,14 @@ default-target = "x86_64-pc-windows-msvc"
 targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 rustdoc-args = ["--cfg", "docsrs"]
 
-[package.metadata.dist]
-dist = true
-
-[package.metadata.dist.bin.broadcast]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live_to_csv]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live-json-snapshot]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live-to-jsonl]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live-variable-schema]
-targets = ["x86_64-pc-windows-msvc"]
-
 [lints]
 workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
 async-trait = "0.1.85"
-clap = { workspace = true }
-csv = { workspace = true }
-encoding_rs = "0.8.35"
-futures = "0.3"
-iracing-irsdk = { version = "0.1.0", path = "../iracing-irsdk" }
-iracing-sdk-derive = { version = "0.1.0", path = "../iracing-sdk-derive", optional = true }
+futures = { workspace = true }
+iracing-irsdk = { workspace = true }
+iracing-sdk-derive = { workspace = true, optional = true }
 memmap2 = "0.9"
 pin-project-lite = "0.2"
 schemars = { workspace = true, optional = true }
@@ -55,14 +33,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
-type-layout = { workspace = true }
 zerocopy = { workspace = true }
 
 # Windows-specific dependencies (for live telemetry)
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.0", features = [
+windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_System_Memory",
   "Win32_System_Threading",
@@ -70,30 +49,16 @@ windows = { version = "0.62.0", features = [
 ] }
 windows-core = "0.62.0"
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "1", default-features = false, features = [
-  "sync",
-  "rt",
-  "time",
-] }
-tokio-stream = { version = "0.1", default-features = false, features = [
-  "sync",
-] }
-tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1", features = ["full"] }
-tokio-stream = { version = "0.1", default-features = false, features = [
-  "sync",
-] }
-tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
-
 [dev-dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+csv = { workspace = true }
 criterion = { package = "codspeed-criterion-compat", version = "5.0.2", features = ["cargo_bench_support", "html_reports"] }
-iracing-sdk-derive = { version = "0.1.0", path = "../iracing-sdk-derive" }
+iracing-sdk-derive = { workspace = true }
 proptest = "1.11.0"
-tempfile = "3"
-tokio = { version = "1", features = ["test-util"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true }
 
 [features]
 default = ["derive"]
@@ -175,65 +140,3 @@ path = "examples/enum_bitfields_disk.rs"
 [[example]]
 name = "session-updates"
 path = "examples/session_update_observer.rs"
-
-[[bin]]
-name = "broadcast"
-path = "src/bin/broadcast.rs"
-
-[[bin]]
-name = "car-setup-schema"
-path = "src/bin/car_setup_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "disk-variable-schema"
-path = "src/bin/disk_variable_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "headers"
-path = "src/bin/headers.rs"
-
-[[bin]]
-name = "live-variable-schema"
-path = "src/bin/live_variable_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "primitives-schema"
-path = "src/bin/primitives_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "ibt-to-csv"
-path = "src/bin/ibt_to_csv.rs"
-
-[[bin]]
-name = "ibt-json-snapshot"
-path = "src/bin/ibt_json_snapshot.rs"
-
-[[bin]]
-name = "ibt-to-json"
-path = "src/bin/ibt_to_json.rs"
-
-[[bin]]
-name = "live-to-csv"
-path = "src/bin/live_to_csv.rs"
-
-[[bin]]
-name = "live-json-snapshot"
-path = "src/bin/live_json_snapshot.rs"
-
-[[bin]]
-name = "live-to-jsonl"
-path = "src/bin/live_to_jsonl.rs"
-
-[[bin]]
-name = "session"
-path = "src/bin/session.rs"
-required-features = ["codegen", "schema-discovery"]
-
-[[bin]]
-name = "variable-schema"
-path = "src/bin/variable_schema.rs"
-required-features = ["codegen"]

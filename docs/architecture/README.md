@@ -16,8 +16,8 @@ disagree, verify the implementation and update both in the same change.
   providers, task policies, connections, frames, and typed adapters.
 - [Session and schema model](session-and-schema.md): variable metadata, YAML
   cleanup/parsing, session caching, schema discovery, and generated references.
-- [Platform and feature boundaries](platform-and-features.md): Windows, portable,
-  and WASM surfaces plus Cargo feature intent.
+- [Platform and feature boundaries](platform-and-features.md): Windows and
+  portable surfaces plus Cargo feature intent.
 - [Broadcast service](broadcast-service.md): the gRPC service's layered
   command-and-observation architecture and operational boundary.
 - [Simulation status](simulation-status.md): the small HTTP facade, injection

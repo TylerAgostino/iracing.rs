@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::var_data::decode_array;
 use crate::{BitField, Result, VarData, VariableInfo, irsdk::VariableType};
 
 /// Runtime value type that can hold any telemetry data.
@@ -54,8 +55,7 @@ impl TelemetryValue {
         if info.count() == 1 {
             T::from_bytes(data, info).map(wrap)
         } else {
-            Vec::<T>::from_bytes(data, info)
-                .map(|values| Self::Array(values.into_iter().map(wrap).collect()))
+            decode_array(data, info, wrap).map(Self::Array)
         }
     }
 }
