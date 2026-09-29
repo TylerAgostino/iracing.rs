@@ -1,10 +1,10 @@
-use std::io::Read;
+use std::{io::Read, ops::Range};
 use type_layout::TypeLayout;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use super::{StatusField, VariableBuffer, constants::IRSDK_MAX_BUFS as IRSDK_MAX_BUFFERS};
 use crate::{
-    Result,
+    Result, VariableHeader,
     parse_utils::{read_wire_bytes, read_wire_bytes_from_io},
 };
 
@@ -104,9 +104,7 @@ impl Header {
             buffers,
         }
     }
-}
 
-impl Header {
     /// Indicates whether the header is connected.
     pub fn is_connected(&self) -> bool {
         self.status.contains(StatusField::CONNECTED)
@@ -116,6 +114,62 @@ impl Header {
     pub fn session_info_changed(&self, last_update: i32) -> bool {
         self.session_info_update != last_update
     }
+
+    /// Returns the range of the session info buffer, relative to file start.
+    /// Returns `None` if the range endpoint overflows.
+    pub fn session_info_range(&self) -> Option<Range<i32>> {
+        i32_checked_range(self.session_info_offset, self.session_info_length)
+    }
+
+    /// Returns the range of the variable header array, relative to file start.
+    /// Returns `None` if the range endpoint overflows.
+    pub fn variable_headers_range(&self) -> Option<Range<i32>> {
+        let length = self
+            .variable_count
+            .checked_mul(size_of::<VariableHeader>() as i32)?;
+
+        i32_checked_range(self.variable_header_offset, length)
+    }
+
+    /// Returns the advertised buffer descriptor at `index`.
+    ///
+    /// Returns `None` if the advertised buffer count is invalid or `index` is
+    /// outside that count. This does not validate or copy the buffer's frame data.
+    pub fn variable_buffer(&self, index: usize) -> Option<&VariableBuffer> {
+        let count = usize::try_from(self.buffer_count).ok()?;
+        if count == 0 || count > Self::MAX_BUFFERS || index >= count {
+            return None;
+        }
+
+        self.buffers.get(index)
+    }
+
+    /// Returns the most recently published buffer descriptor.
+    ///
+    /// Returns `None` if the advertised buffer count or current index is
+    /// invalid. A live writer may reuse this buffer after it is selected, so
+    /// callers must check for a torn read when copying its frame data.
+    pub fn current_variable_buffer(&self) -> Option<&VariableBuffer> {
+        self.variable_buffer(usize::from(self.current_buffer))
+    }
+
+    /// Returns the range of the buffer at `index`.
+    pub fn variable_buffer_range(&self, index: usize) -> Option<Range<i32>> {
+        let buffer = self.variable_buffer(index)?;
+        i32_checked_range(buffer.buffer_offset, self.buffer_length)
+    }
+
+    /// Returns the range of the most recently published buffer.
+    pub fn current_variable_buffer_range(&self) -> Option<Range<i32>> {
+        let buffer = self.current_variable_buffer()?;
+        i32_checked_range(buffer.buffer_offset, self.buffer_length)
+    }
+}
+
+/// ???: Consider implementing a macro to generate the helpers...
+fn i32_checked_range(offset: i32, length: i32) -> Option<Range<i32>> {
+    let end = offset.checked_add(length)?;
+    Some(offset..end)
 }
 
 #[cfg(test)]
@@ -188,6 +242,23 @@ mod tests {
     }
 
     #[test]
+    fn ranges_return_none_when_length_or_endpoint_overflows() {
+        let mut header = valid_live_header();
+        assert_eq!(header.session_info_range(), Some(112..1_112));
+        assert_eq!(header.variable_headers_range(), Some(1_112..15_512));
+
+        header.session_info_offset = i32::MAX;
+        assert_eq!(header.session_info_range(), None);
+
+        header.variable_count = i32::MAX;
+        assert_eq!(header.variable_headers_range(), None);
+
+        header.variable_count = 1;
+        header.variable_header_offset = i32::MAX;
+        assert_eq!(header.variable_headers_range(), None);
+    }
+
+    #[test]
     fn header_from_bytes_rejects_inexact_wire_size() {
         let header = valid_live_header();
         let bytes = header.as_bytes();
@@ -199,6 +270,35 @@ mod tests {
                 actual: 111,
             })
         ));
+    }
+
+    #[test]
+    fn buffer_accessors_respect_advertised_count() {
+        let mut header = valid_live_header();
+        header.buffer_count = 2;
+        header.current_buffer = 1;
+
+        assert_eq!(header.buffer(0).map(|buffer| buffer.tick_count), Some(10));
+        assert_eq!(header.buffer(1).map(|buffer| buffer.tick_count), Some(9));
+        assert!(header.buffer(2).is_none());
+        assert_eq!(
+            header.current_buffer().map(|buffer| buffer.tick_count),
+            Some(9)
+        );
+
+        header.current_buffer = 2;
+        assert!(header.current_buffer().is_none());
+    }
+
+    #[test]
+    fn buffer_accessors_reject_invalid_advertised_counts() {
+        let mut header = valid_live_header();
+
+        for count in [-1, 0, Header::MAX_BUFFERS as i32 + 1] {
+            header.buffer_count = count;
+            assert!(header.buffer(0).is_none());
+            assert!(header.current_buffer().is_none());
+        }
     }
 
     #[test]
