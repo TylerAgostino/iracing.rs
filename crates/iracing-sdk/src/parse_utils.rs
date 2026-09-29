@@ -106,7 +106,7 @@ pub(crate) fn decode_bytes_for_variable_info<const SIZE: usize, T>(
         return Err(IRacingSDKError::type_conversion(expected, info.data_type));
     }
 
-    Ok(decode(*bytes_at::<SIZE>(data, info.offset)?))
+    Ok(decode(*bytes_at::<SIZE>(data, info.offset())?))
 }
 
 /// Decodes a provided `VariableInfo` to it's scalar type.

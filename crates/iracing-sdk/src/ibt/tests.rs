@@ -362,8 +362,8 @@ fn variable_type(expected: &str) -> VariableType {
 fn assert_required_variable(actual: &VariableInfo, expected: &IbtVariableManifest) {
     assert_eq!(actual.name, expected.name);
     assert_eq!(actual.data_type, variable_type(&expected.data_type));
-    assert_eq!(actual.offset, expected.offset);
-    assert_eq!(actual.count, expected.count);
+    assert_eq!(actual.offset(), expected.offset);
+    assert_eq!(actual.count(), expected.count);
     assert_eq!(actual.units, expected.units);
 }
 
@@ -377,7 +377,7 @@ fn test_generated_fixture_variables_match_manifest() -> Result<()> {
         let snapshot = reader
             .variable_headers_snapshot()?
             .context("fixture variable headers")?;
-        let schema = VariableSchema::from_snapshot(snapshot, reader.layout().frame_size())?;
+        let schema = VariableSchema::try_from_snapshot(snapshot, reader.layout().frame_size())?;
 
         assert_eq!(schema.frame_size, fixture.frame_size);
         assert_eq!(schema.variable_count(), fixture.num_vars as usize);
