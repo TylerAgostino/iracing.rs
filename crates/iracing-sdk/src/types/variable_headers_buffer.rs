@@ -12,7 +12,7 @@ pub struct VariableHeadersBuffer {
 
 impl VariableHeadersBuffer {
     /// Decodes exactly `expected_count` headers from a complete region snapshot.
-    pub(crate) fn try_from_region_bytes(bytes: &[u8], expected_count: usize) -> Result<Self> {
+    pub(crate) fn try_from_region_bytes(bytes: &[u8]) -> Result<Self> {
         let (chunks, []) = bytes.as_chunks::<{ size_of::<VariableHeader>() }>() else {
             return Err(IRacingSDKError::parse_error(
                 "VariableHeadersBuffer",
@@ -23,16 +23,6 @@ impl VariableHeadersBuffer {
                 ),
             ));
         };
-
-        if chunks.len() != expected_count {
-            return Err(IRacingSDKError::parse_error(
-                "VariableHeadersBuffer",
-                format!(
-                    "expected {expected_count} variable headers, but decoded {}",
-                    chunks.len(),
-                ),
-            ));
-        }
 
         let headers = chunks
             .iter()
@@ -84,7 +74,7 @@ mod tests {
 
     #[test]
     fn accepts_zero_headers() {
-        let snapshot = VariableHeadersBuffer::try_from_region_bytes(&[], 0).unwrap();
+        let snapshot = VariableHeadersBuffer::try_from_region_bytes(&[]).unwrap();
 
         assert!(snapshot.is_empty());
         assert_eq!(snapshot.iter().len(), 0);
@@ -93,7 +83,7 @@ mod tests {
     #[test]
     fn accepts_one_header() {
         let headers = [header("Speed", 4)];
-        let snapshot = VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes(), 1).unwrap();
+        let snapshot = VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes()).unwrap();
 
         assert_eq!(snapshot.len(), 1);
         assert_eq!(snapshot.as_slice()[0].offset, 4);
@@ -102,7 +92,7 @@ mod tests {
     #[test]
     fn accepts_multiple_headers() {
         let headers = [header("Speed", 4), header("RPM", 8)];
-        let snapshot = VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes(), 2).unwrap();
+        let snapshot = VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes()).unwrap();
 
         assert_eq!(snapshot.len(), 2);
     }
@@ -112,20 +102,20 @@ mod tests {
         let mut bytes = header("Speed", 4).as_bytes().to_vec();
         bytes.push(0);
 
-        assert!(VariableHeadersBuffer::try_from_region_bytes(&bytes, 1).is_err());
+        assert!(VariableHeadersBuffer::try_from_region_bytes(&bytes).is_err());
     }
 
     #[test]
     fn rejects_extra_complete_record() {
         let headers = [header("Speed", 4), header("RPM", 8)];
 
-        assert!(VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes(), 1).is_err());
+        assert!(VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes()).is_err());
     }
 
     #[test]
     fn rejects_fewer_records_than_advertised() {
         let headers = [header("Speed", 4)];
 
-        assert!(VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes(), 2).is_err());
+        assert!(VariableHeadersBuffer::try_from_region_bytes(headers.as_bytes()).is_err());
     }
 }

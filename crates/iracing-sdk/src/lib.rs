@@ -61,6 +61,8 @@ pub mod adapters;
 mod error;
 pub mod irsdk;
 mod parse_utils;
+mod reader;
+pub mod telemetry_source;
 pub mod test_utils;
 pub mod types;
 
@@ -76,7 +78,6 @@ pub mod telemetry;
 pub mod benchmarking;
 
 // Data source modules
-pub mod ibt;
 pub mod schema;
 
 // Core exports
@@ -103,7 +104,7 @@ pub mod windows;
 // Windows memory exports
 #[cfg(windows)]
 #[cfg_attr(docsrs, doc(cfg(windows)))]
-pub use windows::{Broadcast, BroadcastCommand, Connection as WindowsConnection, WaitResult};
+pub use windows::{Broadcast, BroadcastCommand};
 
 // Main API exports
 pub use connections::ibt::IbtConnection;

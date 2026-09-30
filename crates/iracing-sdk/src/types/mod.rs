@@ -45,11 +45,10 @@
 //! # Ok::<(), iracing_sdk::IRacingSDKError>(())
 //! ```
 
+mod byte_range;
 mod dynamic_frame;
 mod frame;
-mod ibt;
 mod iracing_session_string;
-mod regions;
 mod schema;
 mod session_info_buffer;
 mod telemetry_value;
@@ -58,12 +57,12 @@ mod var_data;
 mod variable_headers_buffer;
 
 // Re-export all public types
+pub(crate) use byte_range::ByteRange;
+
 pub use dynamic_frame::DynamicFrame;
 pub use frame::FramePacket;
-pub use ibt::IbtLayout;
 pub use iracing_irsdk::BitField;
 pub(crate) use iracing_session_string::IRacingSessionString;
-pub use regions::*;
 pub use schema::{SchemaProvider, VariableInfo, VariableSchema};
 pub use session_info_buffer::{SessionInfoBuffer, SessionInfoEncoding, SessionInfoPayload};
 pub use telemetry_value::{TelemetryValue, TelemetryValueProvider};

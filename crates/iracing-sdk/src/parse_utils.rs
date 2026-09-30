@@ -2,7 +2,7 @@
 
 use std::num::NonZeroUsize;
 
-use crate::{ByteRegion, IRacingSDKError, Result, VariableInfo, irsdk::VariableType};
+use crate::{IRacingSDKError, Result, VariableInfo, irsdk::VariableType};
 
 pub(crate) fn bytes_at_size(data: &[u8], offset: usize, length: usize) -> Result<&[u8]> {
     let end = offset
@@ -46,49 +46,6 @@ pub(crate) fn parse_positive_usize(
     NonZeroUsize::new(value).ok_or_else(|| {
         IRacingSDKError::parse_error(context, format!("{field_name} must be positive, got 0"))
     })
-}
-
-pub(crate) fn validate_metadata_region(
-    name: &'static str,
-    region: ByteRegion,
-    source_len: u64,
-    preamble_end: u64,
-) -> Result<Option<(u64, u64)>> {
-    if region.is_empty() {
-        return Ok(None);
-    }
-
-    let start = u64::try_from(region.offset()).map_err(|_| {
-        IRacingSDKError::parse_error(
-            "IBT metadata layout",
-            format!("{name} offset cannot be represented as a source offset"),
-        )
-    })?;
-    if start < preamble_end {
-        return Err(IRacingSDKError::parse_error(
-            "IBT metadata layout",
-            format!("{name} starts at {start}, before preamble end {preamble_end}"),
-        ));
-    }
-
-    let end = u64::try_from(region.end()).map_err(|_| {
-        IRacingSDKError::parse_error(
-            "IBT region bounds",
-            "Region end cannot be represented as a source offset",
-        )
-    })?;
-    if end > source_len {
-        return Err(IRacingSDKError::parse_error(
-            "IBT region bounds",
-            format!(
-                "Region {}..{} exceeds source length {source_len}",
-                region.offset(),
-                region.end(),
-            ),
-        ));
-    }
-
-    Ok(Some((start, end)))
 }
 
 #[inline]

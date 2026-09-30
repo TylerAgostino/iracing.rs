@@ -326,7 +326,7 @@ mod tests {
         .unwrap();
 
         let bytes = header.as_bytes();
-        let headers = VariableHeadersBuffer::try_from_region_bytes(bytes, 1).unwrap();
+        let headers = VariableHeadersBuffer::try_from_region_bytes(bytes).unwrap();
 
         let schema = VariableSchema::from_snapshot(headers, 8).unwrap();
 

@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::{
-    FramePacket, Result, SchemaProvider, VariableSchema, WaitResult, WindowsConnection,
-    provider::Provider,
+    FramePacket, Result, SchemaProvider, VariableSchema, provider::Provider,
+    reader::live::LiveReader, telemetry_source::live::WaitResult,
 };
 
 const WAITING_LOG_INTERVAL: Duration = Duration::from_secs(10);
@@ -54,11 +54,11 @@ impl LiveProvider {
     }
 
     fn from_parts(
-        connection: WindowsConnection,
+        connection: LiveReader,
         poll_interval: Duration,
         max_no_connection_attempts: Option<u32>,
     ) -> Result<Self> {
-        let header = connection.header();
+        let header = connection.header_snapshot()?;
         let variables = connection.get_variables()?;
         let mut variable_map = std::collections::HashMap::new();
 

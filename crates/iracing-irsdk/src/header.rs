@@ -169,20 +169,24 @@ impl Header {
     /// Returns the range of the buffer at `index`.
     pub fn variable_buffer_range(&self, index: usize) -> Option<Range<i32>> {
         let buffer = self.variable_buffer(index)?;
-        i32_checked_range(buffer.buffer_offset, self.buffer_length)
+        self.buffer_range(buffer)
     }
 
     /// Returns the range of the most recently published buffer.
     pub fn current_variable_buffer_range(&self) -> Option<Range<i32>> {
         let buffer = self.current_variable_buffer()?;
+        self.buffer_range(buffer)
+    }
+
+    /// Returns the range of a buffer relative to the advertised buffer length.
+    pub fn buffer_range(&self, buffer: &VariableBuffer) -> Option<Range<i32>> {
         i32_checked_range(buffer.buffer_offset, self.buffer_length)
     }
 }
 
-/// ???: Consider implementing a macro to generate the helpers...
+#[inline]
 fn i32_checked_range(offset: i32, length: i32) -> Option<Range<i32>> {
-    let end = offset.checked_add(length)?;
-    Some(offset..end)
+    Some(offset..offset.checked_add(length)?)
 }
 
 #[cfg(test)]
