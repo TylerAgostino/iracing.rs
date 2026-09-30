@@ -134,14 +134,16 @@ impl Header {
         i32_checked_range(self.session_info_offset, self.session_info_length)
     }
 
+    /// Returns the checked length of the variable headers.
+    pub fn variable_headers_length(&self) -> Option<i32> {
+        self.variable_count
+            .checked_mul(size_of::<VariableHeader>() as i32)
+    }
+
     /// Returns the range of the variable header array, relative to file start.
     /// Returns `None` if the range endpoint overflows.
     pub fn variable_headers_range(&self) -> Option<Range<i32>> {
-        let length = self
-            .variable_count
-            .checked_mul(size_of::<VariableHeader>() as i32)?;
-
-        i32_checked_range(self.variable_header_offset, length)
+        i32_checked_range(self.variable_header_offset, self.variable_headers_length()?)
     }
 
     /// Returns the advertised buffer descriptor at `index`.
