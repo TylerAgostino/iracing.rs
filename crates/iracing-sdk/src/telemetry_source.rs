@@ -161,191 +161,211 @@ pub(crate) mod disk {
 #[cfg(windows)]
 pub(crate) mod live {
     use iracing_irsdk::constants::{IRSDK_DATAVALIDEVENTNAME, IRSDK_MEMMAPFILENAME};
-    use std::{ptr::NonNull, time::Duration};
+    use std::{ptr::NonNull, sync::Arc, time::Duration};
     use windows::{
         Win32::{
             Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT},
             System::{
-                Memory::{
-                    FILE_MAP_READ, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS,
-                    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, VirtualQuery,
-                },
+                Memory::{FILE_MAP_READ, MEMORY_BASIC_INFORMATION, MEMORY_MAPPED_VIEW_ADDRESS,
+                    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, VirtualQuery},
                 Threading::{OpenEventW, SYNCHRONIZATION_ACCESS_RIGHTS, WaitForSingleObject},
             },
         },
         core::PCWSTR,
     };
-
     use super::{ByteRange, TelemetrySource, validate_range};
-
     use crate::{IRacingSDKError, Result, windows::wide_string};
 
-    /// Result of waiting for data updates
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum WaitResult {
-        /// Wait resolved with data.
-        Signaled,
-        /// Wait time elapsed.
-        Timeout,
+    pub(crate) enum WaitResult { Signaled, Timeout }
+
+    #[derive(Debug)]
+    struct OwnedHandle(HANDLE);
+    // SAFETY: These mapping/event kernel handles have no thread affinity. The
+    // unique owner (or an Arc to it) keeps them open for every operation.
+    unsafe impl Send for OwnedHandle {}
+    unsafe impl Sync for OwnedHandle {}
+    impl Drop for OwnedHandle {
+        fn drop(&mut self) {
+            // SAFETY: This object uniquely owns a successfully opened handle.
+            let _ = unsafe { CloseHandle(self.0) };
+        }
     }
 
     #[derive(Debug)]
-    pub(crate) struct LiveSource {
-        mapping: HANDLE,
-        base: NonNull<u8>,
-        event: HANDLE,
+    struct MappedView(NonNull<u8>);
+    // SAFETY: The view is read-only external memory, accessed only through
+    // checked volatile reads. No Rust references into it are ever constructed.
+    // Ownership keeps it mapped until all synchronous reads have finished.
+    unsafe impl Send for MappedView {}
+    unsafe impl Sync for MappedView {}
+    impl Drop for MappedView {
+        fn drop(&mut self) {
+            // SAFETY: This is the base returned by our successful MapViewOfFile.
+            let _ = unsafe { UnmapViewOfFile(MEMORY_MAPPED_VIEW_ADDRESS {
+                Value: self.0.as_ptr().cast(),
+            }) };
+        }
+    }
+
+    #[derive(Debug)]
+    pub(crate) struct Mapping {
+        view: MappedView,
+        _mapping: OwnedHandle,
+        event: Arc<OwnedHandle>,
         len: usize,
     }
 
+    /// External mapping access only; interpretation belongs to LiveReader.
+    #[derive(Debug)]
+    pub(crate) enum LiveSource {
+        Windows(Mapping),
+        #[cfg(test)]
+        Test(test_source::TestSource),
+    }
+
+    /// Order volatile protocol loads, including copies, on Windows processors.
+    /// The mapping is normal cacheable RAM, outside Rust-managed allocations.
+    /// x86/x64 preserve load-load order; the asm memory clobber is the compiler
+    /// barrier. ARM64 additionally needs a hardware load barrier. This is not a
+    /// Rust atomic synchronization relationship with the external producer.
+    pub(crate) fn read_barrier() {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        // SAFETY: Empty asm has no machine side effects; omitting nomem/readonly
+        // supplies a compiler memory barrier. Normal x86 loads are ordered.
+        unsafe { std::arch::asm!("", options(nostack, preserves_flags)); }
+        #[cfg(target_arch = "aarch64")]
+        // SAFETY: DMB ISHLD is an unprivileged ARM64 load-ordering instruction.
+        unsafe { std::arch::asm!("dmb ishld", options(nostack, preserves_flags)); }
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+        compile_error!("Live shared memory needs a read barrier for this architecture");
+    }
+
     impl LiveSource {
-        fn wait_for_event(event: HANDLE, timeout_ms: u32) -> Result<WaitResult> {
-            tracing::trace!(timeout_ms = timeout_ms, "Waiting for telemetry update");
-
-            let result = unsafe { WaitForSingleObject(event, timeout_ms) };
-
-            match result {
-                WAIT_OBJECT_0 => {
-                    tracing::trace!("Telemetry update signaled");
-                    Ok(WaitResult::Signaled)
-                }
-                WAIT_TIMEOUT => {
-                    tracing::trace!("Wait timed out");
-                    Ok(WaitResult::Timeout)
-                }
-                _ => {
-                    let win_err = windows::core::Error::from_thread();
-                    Err(IRacingSDKError::windows_api_error(
-                        "WaitForSingleObject",
-                        win_err,
-                    ))
-                }
-            }
-        }
-
         pub fn try_connect() -> Result<Self> {
-            tracing::trace!("Attempting to connect to iRacing shared memory");
-
-            // Open the memory mapping
-            let mapping = unsafe {
-                let wide_name = wide_string(IRSDK_MEMMAPFILENAME);
-                OpenFileMappingW(FILE_MAP_READ.0, false, PCWSTR::from_raw(wide_name.as_ptr()))
-                    .map_err(|e| IRacingSDKError::windows_api_error("OpenFileMappingW", e))?
-            };
-
-            // Map the view
-            let base = unsafe {
-                let ptr = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-                NonNull::new(ptr.Value as *mut u8).ok_or_else(|| {
-                    let win_err = windows::core::Error::from_thread();
-                    IRacingSDKError::windows_api_error("MapViewOfFile", win_err)
-                })?
-            };
-
-            // Query the mapped memory region.
+            let name = wide_string(IRSDK_MEMMAPFILENAME);
+            // SAFETY: name is a live NUL-terminated UTF-16 string.
+            let mapping = OwnedHandle(unsafe {
+                OpenFileMappingW(FILE_MAP_READ.0, false, PCWSTR(name.as_ptr()))
+            }.map_err(|e| IRacingSDKError::windows_api_error("OpenFileMappingW", e))?);
+            // SAFETY: mapping is owned and open; request a read-only full view.
+            let raw = unsafe { MapViewOfFile(mapping.0, FILE_MAP_READ, 0, 0, 0) };
+            let view = MappedView(NonNull::new(raw.Value.cast()).ok_or_else(||
+                IRacingSDKError::windows_api_error("MapViewOfFile", windows::core::Error::from_thread()))?);
             let mut info = MEMORY_BASIC_INFORMATION::default();
-
-            let result = unsafe {
-                VirtualQuery(
-                    Some(base.as_ptr().cast()),
-                    &mut info,
-                    size_of::<MEMORY_BASIC_INFORMATION>(),
-                )
-            };
-
-            if result == 0 {
-                let win_err = windows::core::Error::from_thread();
-                return Err(IRacingSDKError::windows_api_error("VirtualQuery", win_err));
+            // SAFETY: view is mapped and info is writable for its exact size.
+            if unsafe { VirtualQuery(Some(view.0.as_ptr().cast()), &mut info,
+                size_of::<MEMORY_BASIC_INFORMATION>()) } == 0 {
+                return Err(IRacingSDKError::windows_api_error("VirtualQuery", windows::core::Error::from_thread()));
             }
-
+            // A page-file-backed SDK view is one committed region. Conservatively
+            // bound reads to this queried region even if a larger view exists.
             let len = info.RegionSize;
-
-            // Open the data valid event
-            let event = unsafe {
-                let wide_name = wide_string(IRSDK_DATAVALIDEVENTNAME);
-                OpenEventW(
-                    SYNCHRONIZATION_ACCESS_RIGHTS(0x0010_0000),
-                    false,
-                    PCWSTR::from_raw(wide_name.as_ptr()),
-                ) // SYNCHRONIZE
-                .map_err(|e| IRacingSDKError::windows_api_error("OpenEventW", e))?
-            };
-
-            Ok(Self {
-                mapping,
-                base,
-                event,
-                len,
-            })
+            if info.BaseAddress != view.0.as_ptr().cast() || len > isize::MAX as usize {
+                return Err(IRacingSDKError::parse_error("LiveSource", "Invalid mapped view extent"));
+            }
+            let name = wide_string(IRSDK_DATAVALIDEVENTNAME);
+            // SAFETY: name is NUL-terminated; only SYNCHRONIZE access is needed.
+            let event = OwnedHandle(unsafe { OpenEventW(SYNCHRONIZATION_ACCESS_RIGHTS(0x0010_0000),
+                false, PCWSTR(name.as_ptr())) }
+                .map_err(|e| IRacingSDKError::windows_api_error("OpenEventW", e))?);
+            Ok(Self::Windows(Mapping { view, _mapping: mapping, event: Arc::new(event), len }))
         }
 
-        /// Wait for new telemetry data (synchronous - blocks thread)
-        pub fn wait_for_update(&self, timeout: Duration) -> Result<WaitResult> {
-            let ms = timeout.as_millis().min(u32::MAX as u128) as u32;
-            Self::wait_for_event(self.event, ms)
+        /// One aligned 32-bit load, never four potentially torn byte loads.
+        pub fn read_i32(&self, offset: usize) -> Result<i32> {
+            let end = offset.checked_add(size_of::<i32>()).ok_or_else(||
+                IRacingSDKError::parse_error("LiveSource", "Synchronization offset overflow"))?;
+            validate_range(ByteRange::new(offset..end), self.len(), size_of::<i32>())?;
+            if !offset.is_multiple_of(align_of::<i32>()) {
+                return Err(IRacingSDKError::parse_error("LiveSource", "Unaligned synchronization field"));
+            }
+            match self {
+                Self::Windows(mapping) => {
+                    // SAFETY: Mapping bases are page-aligned. Bounds/alignment
+                    // were checked above; all i32 bit patterns are valid. This
+                    // external memory is never accessed using Rust references.
+                    Ok(i32::from_le(unsafe { mapping.view.0.as_ptr().add(offset).cast::<i32>().read_volatile() }))
+                }
+                #[cfg(test)]
+                Self::Test(source) => source.read_i32(offset),
+            }
         }
 
-        /// Wait for new telemetry data (async - cooperative, non-blocking)
-        ///
-        /// This method uses `spawn_blocking` to isolate the synchronous Windows event wait
-        /// on a dedicated blocking thread pool, preventing starvation of other async tasks.
-        /// The async worker thread yields cooperatively via `.await` while the blocking
-        /// thread waits for the Windows event signal.
-        ///
-        /// At 60Hz (16.67ms frames), the hot path (data already available) never reaches
-        /// this method, so spawn_blocking overhead is only paid during startup, pauses,
-        /// or frame drops - exactly when we want cooperative yielding anyway.
         pub async fn wait_for_update_async(&self, timeout: Duration) -> Result<WaitResult> {
-            // Convert HANDLE to raw pointer value (usize) to make it Send
-            // SAFETY: Windows event handles are thread-safe kernel objects
-            let event_raw = self.event.0 as usize;
-            let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
-
+            let Self::Windows(mapping) = self else {
+                #[cfg(test)]
+                { tokio::task::yield_now().await; return Ok(WaitResult::Timeout); }
+            };
+            let event = Arc::clone(&mapping.event);
+            // INFINITE is u32::MAX; keep even enormous requested waits bounded.
+            let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX - 1)) as u32;
             tokio::task::spawn_blocking(move || {
-                tracing::trace!(timeout_ms, "Async waiting for Windows event");
-
-                // Reconstruct HANDLE from raw pointer value
-                // SAFETY: event_raw came from a valid HANDLE, kernel object is still alive
-                let event = HANDLE(event_raw as *mut std::ffi::c_void);
-                Self::wait_for_event(event, timeout_ms)
-            })
-            .await
-            .map_err(|e| {
-                IRacingSDKError::buffer_operation_error(
-                    format!("Event wait task panicked: {}", e),
-                    None,
-                )
-            })?
+                // SAFETY: The closure owns an Arc, retaining the handle even if
+                // its JoinHandle/future and the original source are dropped.
+                match unsafe { WaitForSingleObject(event.0, timeout_ms) } {
+                    WAIT_OBJECT_0 => Ok(WaitResult::Signaled),
+                    WAIT_TIMEOUT => Ok(WaitResult::Timeout),
+                    _ => Err(IRacingSDKError::windows_api_error("WaitForSingleObject", windows::core::Error::from_thread())),
+                }
+            }).await.map_err(|e| IRacingSDKError::buffer_operation_error(format!("Event wait task failed: {e}"), None))?
         }
     }
 
     impl TelemetrySource for LiveSource {
         fn len(&self) -> usize {
-            self.len
-        }
-
-        fn read_range_into(&self, range: ByteRange, destination: &mut [u8]) -> Result<()> {
-            let range = validate_range(range, self.len, destination.len())?;
-
-            for (index, byte) in destination.iter_mut().enumerate() {
-                *byte = unsafe { self.base.as_ptr().add(range.start + index).read_volatile() };
+            match self {
+                Self::Windows(mapping) => mapping.len,
+                #[cfg(test)]
+                Self::Test(source) => source.len(),
             }
-
-            Ok(())
+        }
+        fn read_range_into(&self, range: ByteRange, destination: &mut [u8]) -> Result<()> {
+            let range = validate_range(range, self.len(), destination.len())?;
+            match self {
+                Self::Windows(mapping) => {
+                    for (index, byte) in destination.iter_mut().enumerate() {
+                        // SAFETY: The range was bounded above; u8 has no invalid
+                        // representations or alignment requirement. Volatile
+                        // reads preserve external accesses throughout the copy.
+                        *byte = unsafe { mapping.view.0.as_ptr().add(range.start + index).read_volatile() };
+                    }
+                    Ok(())
+                }
+                #[cfg(test)]
+                Self::Test(source) => source.read_range_into(range, destination),
+            }
         }
     }
 
-    unsafe impl Send for LiveSource {}
-    unsafe impl Sync for LiveSource {}
-
-    impl Drop for LiveSource {
-        fn drop(&mut self) {
-            unsafe {
-                let addr = MEMORY_MAPPED_VIEW_ADDRESS {
-                    Value: self.base.as_ptr() as *mut _,
-                };
-                let _ = UnmapViewOfFile(addr);
-                let _ = CloseHandle(self.mapping);
-                let _ = CloseHandle(self.event);
+    #[cfg(test)]
+    pub(crate) mod test_source {
+        use super::*;
+        use std::{ops::Range, sync::Mutex};
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum Read { Bytes(Range<usize>), I32(usize) }
+        type Hook = Box<dyn FnMut(Read, &mut [u8]) + Send>;
+        pub struct TestSource { bytes: Mutex<(Vec<u8>, Hook)>, len: usize }
+        impl std::fmt::Debug for TestSource {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.debug_struct("TestSource").finish_non_exhaustive() }
+        }
+        impl TestSource {
+            pub fn new(bytes: Vec<u8>, hook: impl FnMut(Read, &mut [u8]) + Send + 'static) -> Self {
+                Self { len: bytes.len(), bytes: Mutex::new((bytes, Box::new(hook))) }
+            }
+            pub fn len(&self) -> usize { self.len }
+            pub fn read_i32(&self, offset: usize) -> Result<i32> {
+                let mut state = self.bytes.lock().unwrap();
+                let (bytes, hook) = &mut *state;
+                hook(Read::I32(offset), bytes);
+                Ok(i32::from_le_bytes(bytes[offset..offset+4].try_into().unwrap()))
+            }
+            pub fn read_range_into(&self, range: Range<usize>, destination: &mut [u8]) -> Result<()> {
+                let mut state = self.bytes.lock().unwrap();
+                let (bytes, hook) = &mut *state;
+                hook(Read::Bytes(range.clone()), bytes);
+                destination.copy_from_slice(&bytes[range]);
+                Ok(())
             }
         }
     }
