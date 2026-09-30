@@ -1,3 +1,24 @@
+use iracing_irsdk::Header;
+
+use crate::{ByteRange, IRacingSDKError, Result};
+
+macro_rules! parse_header_range {
+    ($length:expr, $range:expr) => {{
+        let range: Option<std::ops::Range<i32>> = $range;
+
+        if $length == 0 {
+            None
+        } else {
+            Some(ByteRange::try_from(range.ok_or_else(|| {
+                IRacingSDKError::parse_error(
+                    "parse_header_range",
+                    "Could not find variable headers byte range",
+                )
+            })?)?)
+        }
+    }};
+}
+
 pub mod disk {
     use crate::{
         Result, SessionInfoBuffer, VariableHeadersBuffer,
