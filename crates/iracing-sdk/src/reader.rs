@@ -140,29 +140,13 @@ pub mod disk {
                 ));
             }
 
-            let Some(session_info) = header
-                .session_info_range()
-                .map(ByteRange::try_from)
-                .transpose()?
-            else {
-                return Err(IRacingSDKError::parse_error(
-                    "IbtMeta::try_from_headers",
-                    "Could not find session info byte range",
-                ));
-            };
-            let session_info = (header.session_info_length > 0).then_some(session_info);
+            let session_info =
+                parse_header_range!(header.session_info_length, header.session_info_range());
 
-            let Some(variable_headers) = header
-                .variable_headers_range()
-                .map(ByteRange::try_from)
-                .transpose()?
-            else {
-                return Err(IRacingSDKError::parse_error(
-                    "IbtMeta::try_from_headers",
-                    "Could not find variable headers byte range",
-                ));
-            };
-            let variable_headers = (header.variable_count > 0).then_some(variable_headers);
+            let variable_headers = parse_header_range!(
+                header.variable_headers_length().unwrap_or_default(),
+                header.variable_headers_range()
+            );
 
             let session_range = session_info.as_ref().map(ByteRange::as_range);
             let variable_range = variable_headers.as_ref().map(ByteRange::as_range);
@@ -174,10 +158,11 @@ pub mod disk {
                     ));
                 }
             }
-            if let (Some(session_range), Some(variable_range)) = (&session_range, &variable_range) {
-                if session_range.start < variable_range.end
-                    && variable_range.start < session_range.end
-                {
+
+            // Ensure the regions don't overlap
+            if let (Some(session_range), Some(variable_range)) = (&session_info, &variable_headers)
+            {
+                if session_range.overlaps(variable_range) {
                     return Err(IRacingSDKError::parse_error(
                         "IbtMeta::try_from_headers",
                         "Metadata regions overlap",
