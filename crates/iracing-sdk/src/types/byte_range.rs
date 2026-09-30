@@ -18,6 +18,18 @@ impl ByteRange {
     pub fn len(&self) -> usize {
         self.range.end - self.range.start
     }
+
+    pub fn start(&self) -> usize {
+        self.range.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.range.end
+    }
+
+    pub fn overlaps(&self, other: &ByteRange) -> bool {
+        self.start() < other.end() && other.start() < self.end()
+    }
 }
 
 macro_rules! impl_try_from_byte_range {
