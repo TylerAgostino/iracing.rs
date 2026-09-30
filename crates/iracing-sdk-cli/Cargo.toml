@@ -9,25 +9,11 @@ edition.workspace = true
 license.workspace = true
 build = "build.rs"
 autobins = false
+default-run = "iracing-sdk"
+
 
 [package.metadata.dist]
 dist = true
-features = ["codegen", "schema-discovery"]
-
-[package.metadata.dist.bin.broadcast]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live_to_csv]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live-json-snapshot]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live-to-jsonl]
-targets = ["x86_64-pc-windows-msvc"]
-
-[package.metadata.dist.bin.live-variable-schema]
-targets = ["x86_64-pc-windows-msvc"]
 
 [lints]
 workspace = true
@@ -37,8 +23,9 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 csv = { workspace = true }
 futures = { workspace = true }
-iracing-sdk = { workspace = true }
-schemars = { workspace = true, optional = true }
+iracing-sdk = { workspace = true, features = ["schema-discovery", "codegen"] }
+iracing-irsdk = { workspace = true }
+schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
@@ -47,69 +34,10 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 type-layout = { workspace = true }
 
-[features]
-default = []
-codegen = ["dep:schemars", "iracing-sdk/codegen"]
-schema-discovery = ["iracing-sdk/schema-discovery"]
-
 [[bin]]
-name = "broadcast"
-path = "src/bin/broadcast.rs"
+name = "iracing-sdk"
+path = "src/main.rs"
 
-[[bin]]
-name = "car-setup-schema"
-path = "src/bin/car_setup_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "disk-variable-schema"
-path = "src/bin/disk_variable_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "headers"
-path = "src/bin/headers.rs"
-
-[[bin]]
-name = "live-variable-schema"
-path = "src/bin/live_variable_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "primitives-schema"
-path = "src/bin/primitives_schema.rs"
-required-features = ["codegen"]
-
-[[bin]]
-name = "ibt-to-csv"
-path = "src/bin/ibt_to_csv.rs"
-
-[[bin]]
-name = "ibt-json-snapshot"
-path = "src/bin/ibt_json_snapshot.rs"
-
-[[bin]]
-name = "ibt-to-json"
-path = "src/bin/ibt_to_json.rs"
-
-[[bin]]
-name = "live-to-csv"
-path = "src/bin/live_to_csv.rs"
-
-[[bin]]
-name = "live-json-snapshot"
-path = "src/bin/live_json_snapshot.rs"
-
-[[bin]]
-name = "live-to-jsonl"
-path = "src/bin/live_to_jsonl.rs"
-
-[[bin]]
-name = "session"
-path = "src/bin/session.rs"
-required-features = ["codegen", "schema-discovery"]
-
-[[bin]]
-name = "variable-schema"
-path = "src/bin/variable_schema.rs"
-required-features = ["codegen"]
+[dev-dependencies]
+iracing-sdk = { workspace = true, features = ["test-utils"] }
+tempfile = { workspace = true }
