@@ -190,14 +190,14 @@ pub(crate) mod live {
     }
 
     #[derive(Debug)]
-    pub(crate) struct WindowsMapping {
+    pub(crate) struct LiveSource {
         mapping: HANDLE,
         base: NonNull<u8>,
         event: HANDLE,
         len: usize,
     }
 
-    impl WindowsMapping {
+    impl LiveSource {
         fn wait_for_event(event: HANDLE, timeout_ms: u32) -> Result<WaitResult> {
             tracing::trace!(timeout_ms = timeout_ms, "Waiting for telemetry update");
 
@@ -318,7 +318,7 @@ pub(crate) mod live {
         }
     }
 
-    impl TelemetrySource for WindowsMapping {
+    impl TelemetrySource for LiveSource {
         fn len(&self) -> usize {
             self.len
         }
@@ -326,19 +326,18 @@ pub(crate) mod live {
         fn read_range_into(&self, range: ByteRange, destination: &mut [u8]) -> Result<()> {
             let range = validate_range(range, self.len, destination.len())?;
 
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    self.base.as_ptr().add(range.start),
-                    destination.as_mut_ptr(),
-                    destination.len(),
-                );
+            for (index, byte) in destination.iter_mut().enumerate() {
+                *byte = unsafe { self.base.as_ptr().add(range.start + index).read_volatile() };
             }
 
             Ok(())
         }
     }
 
-    impl Drop for WindowsMapping {
+    unsafe impl Send for LiveSource {}
+    unsafe impl Sync for LiveSource {}
+
+    impl Drop for LiveSource {
         fn drop(&mut self) {
             unsafe {
                 let addr = MEMORY_MAPPED_VIEW_ADDRESS {
