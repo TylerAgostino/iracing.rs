@@ -14,7 +14,9 @@
 - `types/ibt/`: `IbtLayout` validates physical byte geometry from `Header` and source length without I/O. `MetadataRegions` lives in `types/regions/`; `IbtReader` delegates all geometry to the layout. The reader has no schema, session cache, or logical replay cursor. Provider construction rejects frames without variable headers but accepts empty recordings without metadata. Source lengths must fit `usize` (4 GiB files are rejected on 32-bit targets).
 - `types/`: `VariableSchema`, `VariableInfo`, `VarData`, `FramePacket`, `DynamicFrame`, broadcast enums, incident helpers, and bitfield enums. Always decode telemetry via `VarData::from_bytes` (little-endian) rather than manual slicing.
 - `schema/session/`: `SessionInfo::parse` deserializes decoded session YAML; the live telemetry session policy tracks `session_version`, while IBT parses its session once.
-- Live schema discovery: use `WindowsConnection` for shared-memory access, `irsdk::{Header, VariableHeader}` for SDK wire layouts, and `VariableSchema` for variable metadata.
+- Live acquisition: `LiveSource` owns Windows mapping/event access; `LiveReader` acquires owned snapshots. Frame/variable methods use `Result<Option<_>>`; session acquisition preserves `Absent` versus `Contended`. `LiveProvider` retries session contention within the one-fetch-per-version policy, sanitizes YAML, and never maps frame idleness to EOF.
+- Live activation validates all active frame ranges and synchronization offsets once. Acquisition compares immutable layout words before access and after copies, permanently invalidating on change; keep these checks separate from publication state and never recover by replacing the cached layout.
+- An activated live provider belongs to one session. `LiveDisconnected` and `LiveInvalidated` permanently retire the reader and stop the telemetry task without retry. Recreate the connection and subscriptions to revalidate schema/frequency; never swap a reader under existing adapter validation. Construction is fail-fast; callers own startup retries.
 - `providers/`: `Provider`, `IbtProvider`, and `LiveProvider` stream `FramePacket` values plus session YAML.
 - `connections/`: higher-level `IbtConnection` and `LiveConnection` subscription APIs. `IbtConnection` coordinates one shared cursor across acknowledged subscribers; `LiveConnection` exposes watch-backed latest snapshots.
 - `telemetry/`: shared frame-read loop plus explicit delivery and session policies. `LatestDelivery` is the live default, while `Telemetry::spawn_ibt` selects `OnDemandDelivery`.
@@ -30,7 +32,7 @@
 
 ## Platform & Feature Guardrails
 
-- Gate actual shared-memory, live-provider, and Win32 broadcast transports with `#[cfg(windows)]`. Keep portable typed commands and the non-Windows `LiveConnection` builder stub available where the public API already promises them.
+- Gate actual shared-memory, live-provider, and Win32 broadcast transports with `#[cfg(windows)]`. Keep portable typed commands and the non-Windows `LiveConnection` constructor stub available where the public API already promises them.
 - Recorded and live sources have different delivery semantics. IBT replay is explicitly started and advances one shared cursor only after every active subscription asks for its next item; live delivery remains latest-wins.
 
 ## Examples & Binaries

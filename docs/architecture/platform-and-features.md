@@ -9,7 +9,7 @@
 | Session YAML models and parsing | Yes | Yes |
 | `IbtProvider` and `IbtConnection` | Yes | Yes |
 | Live shared-memory provider | No | Yes |
-| `LiveConnection` symbol | Stub/builder only | Full implementation |
+| `LiveConnection` symbol | Stub/constructor only | Full implementation |
 | Typed broadcast commands | Yes | Yes |
 | Win32 broadcast transport | No | Yes |
 | Generated gRPC bindings/client | Yes | Yes |
@@ -28,7 +28,7 @@ Windows-only. Existing examples:
 
 - `BroadcastCommand` and related enums are portable typed data;
 - generated protobuf messages and `RawBroadcastClient` are portable;
-- `LiveConnection` preserves a non-Windows builder stub that fails clearly.
+- `LiveConnection` preserves a non-Windows constructor stub that fails clearly.
 
 Windows-only binaries must retain explicit non-Windows behavior when Cargo/CI
 builds all targets, and distributable binaries must be listed under matching

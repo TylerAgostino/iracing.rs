@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
     {
         use anyhow::Context;
         use futures::StreamExt;
-        use iracing_sdk::{LiveConnection, WindowsConnection, providers::live::LiveProvider};
+        use iracing_sdk::{LiveConnection, providers::live::LiveProvider};
         use std::{fs, thread, time::Duration};
 
         let Args {
@@ -57,12 +57,9 @@ async fn main() -> Result<()> {
             })?;
         }
 
-        let windows_connection = loop {
-            match WindowsConnection::try_connect() {
-                Ok(connection) if connection.is_connected() => break connection,
-                Ok(_) => {
-                    tracing::debug!("Shared memory opened but telemetry is not connected yet");
-                }
+        let provider = loop {
+            match LiveProvider::new() {
+                Ok(provider) => break provider,
                 Err(error) => {
                     tracing::debug!(%error, "Waiting for iRacing shared memory");
                 }
@@ -71,12 +68,7 @@ async fn main() -> Result<()> {
             thread::sleep(Duration::from_secs(1));
         };
 
-        let provider = LiveProvider::builder()
-            .with_connection(windows_connection)
-            .without_no_connection_limit()
-            .build()?;
-
-        let connection = LiveConnection::builder().with_provider(provider).build()?;
+        let connection = LiveConnection::from_provider(provider);
         let mut stream = Box::pin(connection.session_updates());
         let mut previous_session_info = None;
         let mut previous_setup_revision = None;

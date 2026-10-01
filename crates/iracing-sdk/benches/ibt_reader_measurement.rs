@@ -18,7 +18,7 @@
 //! machine load; compare results only on the same machine and revision.
 
 use anyhow::{Context, Result, ensure};
-use iracing_sdk::ibt::IbtReader;
+use iracing_sdk::reader::disk::IbtReader;
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     fs,
@@ -129,18 +129,18 @@ fn measure(
     PEAK_BYTES.store(before, Ordering::SeqCst);
     TRACK_PEAK.store(true, Ordering::SeqCst);
     let open_started = Instant::now();
-    let mut reader = open()?;
+    let reader = open()?;
     let open_time = open_started.elapsed();
     TRACK_PEAK.store(false, Ordering::SeqCst);
     let retained_heap = LIVE_BYTES.load(Ordering::SeqCst).saturating_sub(before);
     let peak_open_heap = PEAK_BYTES.load(Ordering::SeqCst).saturating_sub(before);
-    let frame_size = reader.layout().frame_size();
-    let frame_count = reader.layout().frame_count();
+    let frame_size = reader.frame_size();
+    let frame_count = reader.frame_count();
 
     let replay_started = Instant::now();
     let mut replay_bytes = 0u64;
     for index in 0..frame_count {
-        let frame = reader.frame(index)?;
+        let frame = reader.frame_snapshot(index)?;
         replay_bytes = replay_bytes
             .checked_add(u64::try_from(frame.len())?)
             .context("replay byte count overflowed")?;

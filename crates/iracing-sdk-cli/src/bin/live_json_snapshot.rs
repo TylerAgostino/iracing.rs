@@ -44,20 +44,15 @@ fn main() -> Result<()> {
 #[cfg(windows)]
 #[tokio::main(flavor = "current_thread")]
 async fn run() -> Result<()> {
-    use iracing_sdk::{
-        DynamicFrame, LiveConnection, SchemaProvider, UpdateRate, WindowsConnection,
-    };
+    use iracing_sdk::{DynamicFrame, LiveConnection, SchemaProvider, UpdateRate};
     use std::{thread, time::Duration};
 
     let Args { output_path } = Args::parse();
 
     tracing::info!("Opening iRacing connection...");
-    let windows_connection = loop {
-        match WindowsConnection::try_connect() {
-            Ok(connection) if connection.is_connected() => break connection,
-            Ok(_) => {
-                tracing::debug!("Shared memory opened but telemetry is not connected yet");
-            }
+    let provider = loop {
+        match LiveProvider::new() {
+            Ok(provider) => break provider,
             Err(error) => {
                 tracing::debug!(%error, "Waiting for iRacing shared memory");
             }
@@ -66,13 +61,7 @@ async fn run() -> Result<()> {
         thread::sleep(Duration::from_secs(1));
     };
 
-    let connection = LiveConnection::builder()
-        .with_provider(
-            LiveProvider::builder()
-                .with_connection(windows_connection)
-                .build()?,
-        )
-        .build()?;
+    let connection = LiveConnection::from_provider(provider);
 
     let mut variables = connection.variables();
     if variables.is_empty() {

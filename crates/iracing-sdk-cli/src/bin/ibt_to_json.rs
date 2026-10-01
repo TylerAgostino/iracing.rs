@@ -42,9 +42,7 @@ async fn main() -> Result<()> {
     } = Args::parse();
 
     tracing::info!(path = %ibt_path.display(), "Opening IBT file");
-    let connection = IbtConnection::builder()
-        .with_path(&ibt_path)
-        .build()
+    let connection = IbtConnection::open(&ibt_path)
         .await
         .context("Failed to open IBT telemetry file")?;
 

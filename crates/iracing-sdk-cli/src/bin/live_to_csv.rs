@@ -7,7 +7,7 @@
 //! - Every telemetry variable in the live schema is written per frame
 //!
 //! # Platform
-//! This tool relies on `iracing_sdk::WindowsConnection`, so it is only usable on
+//! This tool relies on `iracing_sdk::LiveConnection`, so it is only usable on
 //! Windows with iRacing shared memory available.
 //!
 //! # Usage
@@ -27,7 +27,7 @@ use clap::Parser;
 #[cfg(windows)]
 use futures::StreamExt;
 #[cfg(windows)]
-use iracing_sdk::{DynamicFrame, LiveConnection, WindowsConnection, providers::live::LiveProvider};
+use iracing_sdk::{DynamicFrame, LiveConnection, SchemaProvider, providers::live::LiveProvider};
 #[cfg(windows)]
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
@@ -57,15 +57,10 @@ async fn run() -> Result<()> {
     let Args { output_path } = Args::parse();
 
     tracing::info!("Opening iRacing connection");
-    let connection =
-        WindowsConnection::try_connect().context("Failed to connect to iRacing shared memory")?;
-
-    if !connection.is_connected() {
-        return Err(anyhow!("iRacing is not connected."));
-    }
+    let provider = LiveProvider::new().context("Failed to connect to iRacing shared memory")?;
 
     // Sort the variables for extraction by the offset of each variable info
-    let mut variables = connection.get_variables()?;
+    let mut variables = provider.variables();
     if variables.is_empty() {
         return Err(anyhow!(
             "No telemetry variables were available from the live connection"
@@ -78,12 +73,7 @@ async fn run() -> Result<()> {
             .then_with(|| left.name.cmp(&right.name))
     });
 
-    // Create a provider for actual extraction
-    let provider = LiveProvider::builder()
-        .with_connection(connection)
-        .build()?;
-
-    let connection = LiveConnection::builder().with_provider(provider).build()?;
+    let connection = LiveConnection::from_provider(provider);
     let mut stream = connection.subscribe::<DynamicFrame>(iracing_sdk::UpdateRate::Native)?;
 
     tracing::info!(path = %output_path.display(), "Creating CSV output");

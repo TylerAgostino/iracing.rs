@@ -3,7 +3,7 @@
 use std::{path::Path, sync::Arc};
 
 use crate::{
-    FramePacket, IRacingSDKError, Result, VariableSchema, provider::Provider,
+    FramePacket, IRacingSDKError, Result, SchemaProvider, VariableSchema, provider::Provider,
     reader::disk::IbtReader, types::IRacingSessionString,
 };
 
@@ -103,6 +103,12 @@ impl Provider for IbtProvider {
 
     fn tick_rate(&self) -> f64 {
         0.0
+    }
+}
+
+impl SchemaProvider for IbtProvider {
+    fn schema(&self) -> &VariableSchema {
+        &self.schema
     }
 }
 

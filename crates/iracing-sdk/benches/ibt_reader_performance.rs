@@ -33,7 +33,8 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use futures::StreamExt;
 use iracing_sdk::{
-    DynamicFrame, IbtConnection, ibt::IbtReader, provider::Provider, providers::ibt::IbtProvider,
+    DynamicFrame, IbtConnection, provider::Provider, providers::ibt::IbtProvider,
+    reader::disk::IbtReader,
 };
 use std::{hint::black_box, time::Duration, time::Instant};
 
@@ -91,9 +92,13 @@ fn bench_sequential_replay(c: &mut Criterion) {
             |b, path| {
                 b.iter_batched(
                     || IbtReader::open(path).expect("fixture should open"),
-                    |mut reader| {
-                        for index in 0..reader.layout().frame_count() {
-                            black_box(reader.frame(index).expect("fixture frame should read"));
+                    |reader| {
+                        for index in 0..reader.frame_count() {
+                            black_box(
+                                reader
+                                    .frame_snapshot(index)
+                                    .expect("fixture frame should read"),
+                            );
                         }
                     },
                     BatchSize::LargeInput,
@@ -166,9 +171,7 @@ fn bench_connection_sequential_replay(c: &mut Criterion) {
                     let mut elapsed = Duration::ZERO;
                     for _ in 0..iterations {
                         elapsed += runtime.block_on(async {
-                            let connection = IbtConnection::builder()
-                                .with_path(path.clone())
-                                .build()
+                            let connection = IbtConnection::open(path.clone())
                                 .await
                                 .expect("fixture connection should open");
                             let mut frames = Box::pin(
@@ -215,11 +218,11 @@ fn bench_random_frame_read(c: &mut Criterion) {
             |b, (path, positions)| {
                 b.iter_batched(
                     || IbtReader::open(path).expect("fixture should open"),
-                    |mut reader| {
+                    |reader| {
                         for &position in positions {
                             black_box(
                                 reader
-                                    .frame(black_box(position))
+                                    .frame_snapshot(black_box(position))
                                     .expect("fixture frame should read"),
                             );
                         }

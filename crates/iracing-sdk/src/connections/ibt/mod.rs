@@ -1,10 +1,7 @@
 //! IBT connection for disk telemetry.
 
-mod builder;
 pub(crate) mod coordinator;
 pub(crate) mod subscription;
-
-pub use builder::{IbtConnectionBuilder, NoSource, PathSource, ProviderSource};
 
 use futures::{Stream, StreamExt};
 use std::sync::{
@@ -47,12 +44,19 @@ pub struct IbtConnection {
 }
 
 impl IbtConnection {
-    /// Start building an IBT connection.
-    pub fn builder() -> IbtConnectionBuilder<NoSource> {
-        IbtConnectionBuilder::default()
+    /// Open an `.ibt` recording and create a connection with replay paused.
+    ///
+    /// The recording must remain unchanged while the connection is alive.
+    /// Create subscriptions and call [`Self::start`] to begin delivery.
+    pub async fn open(path: impl AsRef<std::path::Path>) -> Result<Self> {
+        tracing::info!("Opening IBT file: {}", path.as_ref().display());
+        Self::from_provider(IbtProvider::open(path)?).await
     }
 
-    async fn from_provider(provider: IbtProvider) -> Result<Self> {
+    /// Create a connection from a provider with replay paused.
+    ///
+    /// Create subscriptions and call [`Self::start`] to begin delivery.
+    pub async fn from_provider(provider: IbtProvider) -> Result<Self> {
         let schema = provider.shared_schema();
         let source_hz = provider.tick_rate();
 
@@ -170,6 +174,30 @@ mod tests {
         time::{Duration, Instant},
     };
     use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn open_creates_connection() -> Result<()> {
+        let path = require_smallest_ibt_fixture()
+            .expect("generated IBT fixture should be available for connection tests");
+
+        let connection = IbtConnection::open(path).await?;
+
+        assert!(connection.schema().variable_count() > 0);
+        assert!(connection.source_hz() > 0.0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn from_provider_creates_connection() -> Result<()> {
+        let path = require_smallest_ibt_fixture()
+            .expect("generated IBT fixture should be available for connection tests");
+        let provider = IbtProvider::open(path)?;
+
+        let connection = IbtConnection::from_provider(provider).await?;
+
+        assert!(connection.schema().variable_count() > 0);
+        Ok(())
+    }
 
     fn fixture_with_frame_count(frame_count: usize) -> Result<Vec<u8>> {
         let path = require_smallest_ibt_fixture()

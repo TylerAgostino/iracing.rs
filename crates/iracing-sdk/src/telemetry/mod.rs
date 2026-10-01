@@ -157,10 +157,12 @@ impl Telemetry {
                     error_count += 1;
                     tracing::error!("Provider error ({}/{}): {}", error_count, MAX_ERRORS, e);
 
-                    if error_count >= MAX_ERRORS {
-                        tracing::error!("Too many provider errors, shutting down!");
-                        // Update consumers that stream ended.
-                        delivery.end(permit).await;
+                    if !e.is_retryable() || error_count >= MAX_ERRORS {
+                        tracing::error!(
+                            "Terminal provider error or retry limit reached, shutting down!"
+                        );
+                        // Preserve the terminal error for demand-based consumers.
+                        delivery.terminal_error(permit, e).await;
                         break;
                     }
 
@@ -311,6 +313,98 @@ mod tests {
         fn tick_rate(&self) -> f64 {
             60.0
         }
+    }
+
+    struct FailingProvider {
+        error: Option<crate::IRacingSDKError>,
+        reads: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl Provider for FailingProvider {
+        async fn next_frame(&mut self) -> Result<Option<FramePacket>> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            match self.error.take() {
+                Some(error) => Err(error),
+                None => Ok(None),
+            }
+        }
+        async fn session_yaml(&mut self, _version: u32) -> Result<Option<String>> {
+            Ok(None)
+        }
+        fn tick_rate(&self) -> f64 {
+            60.0
+        }
+    }
+
+    #[tokio::test]
+    async fn terminal_live_errors_stop_immediately_and_finalize_once() {
+        for error in [
+            crate::IRacingSDKError::LiveDisconnected,
+            crate::IRacingSDKError::LiveInvalidated {
+                cause: Arc::new(crate::IRacingSDKError::parse_error(
+                    "LiveReader",
+                    "bad index",
+                )),
+            },
+        ] {
+            let reads = Arc::new(AtomicUsize::new(0));
+            let ends = Arc::new(AtomicUsize::new(0));
+            let (frames, receiver) = watch::channel(Some(Arc::new(live_frame(1, 0))));
+            Telemetry::read_task(
+                FailingProvider {
+                    error: Some(error),
+                    reads: Arc::clone(&reads),
+                },
+                LatestDelivery::new(frames),
+                CountingSessionPolicy {
+                    end_count: Arc::clone(&ends),
+                },
+                CancellationToken::new(),
+            )
+            .await;
+            assert_eq!(reads.load(Ordering::SeqCst), 1);
+            assert_eq!(ends.load(Ordering::SeqCst), 1);
+            assert!(receiver.borrow().is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn retryable_provider_error_can_recover() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let ends = Arc::new(AtomicUsize::new(0));
+        let (frames, _receiver) = watch::channel(None);
+        Telemetry::read_task(
+            FailingProvider {
+                error: Some(crate::IRacingSDKError::connection_failed("temporary")),
+                reads: Arc::clone(&reads),
+            },
+            LatestDelivery::new(frames),
+            CountingSessionPolicy {
+                end_count: Arc::clone(&ends),
+            },
+            CancellationToken::new(),
+        )
+        .await;
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        assert_eq!(ends.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn terminal_replay_error_is_delivered_as_error_not_eof() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let channels = Telemetry::spawn_ibt(FailingProvider {
+            error: Some(crate::IRacingSDKError::parse_error(
+                "test",
+                "invalid source",
+            )),
+            reads: Arc::clone(&reads),
+        });
+        assert!(matches!(
+            request_ibt_frame(&channels.frames).await,
+            Err(crate::IRacingSDKError::Parse { .. })
+        ));
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
     }
 
     /// Ask the IBT frame channel to perform one provider read.

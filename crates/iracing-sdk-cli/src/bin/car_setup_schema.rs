@@ -17,7 +17,7 @@ use std::{fs::File, io::BufWriter, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use clap::Parser;
-use iracing_sdk::{ibt::IbtReader, schema::SessionInfo};
+use iracing_sdk::{reader::disk::IbtReader, schema::SessionInfo};
 use tracing_subscriber::EnvFilter;
 
 /// CLI arguments for the car setup schema generator.
@@ -44,7 +44,7 @@ struct Args {
 fn parse_disk_session(ibt_path: PathBuf) -> Result<SessionInfo> {
     tracing::info!(path = %ibt_path.display(), "Opening IBT file");
 
-    let mut reader = IbtReader::open(&ibt_path)?;
+    let reader = IbtReader::open(&ibt_path)?;
 
     let session_yaml = reader
         .session_info_snapshot()?
@@ -56,21 +56,22 @@ fn parse_disk_session(ibt_path: PathBuf) -> Result<SessionInfo> {
 /// Connects to live iRacing shared memory and parses the current session info.
 #[cfg(windows)]
 fn parse_live_session() -> Result<SessionInfo> {
-    use iracing_sdk::WindowsConnection;
+    use iracing_sdk::reader::live::{LiveReader, LiveSessionRead};
 
     tracing::info!("Opening iRacing connection");
 
-    let connection = WindowsConnection::try_connect()?;
+    let mut connection = LiveReader::try_connect()?;
 
-    if !connection.is_connected() {
+    if !connection.is_connected()? {
         return Err(anyhow!("iRacing is not connected."));
     }
 
-    let raw_session_yaml = connection
-        .session_info()
-        .ok_or_else(|| anyhow!("No live session YAML is available"))?;
-
-    SessionInfo::parse(&raw_session_yaml).map_err(|e| anyhow!("Error parsing SessionInfo: {}", e))
+    match connection.session_info_snapshot()? {
+        LiveSessionRead::Snapshot(snapshot) => SessionInfo::try_from(snapshot.buffer)
+            .map_err(|e| anyhow!("Error parsing SessionInfo: {}", e)),
+        LiveSessionRead::Absent => Err(anyhow!("Session info is absent from live connection")),
+        LiveSessionRead::Contended => Err(anyhow!("Session info is contended")),
+    }
 }
 
 /// Non-Windows stub — always returns an error directing the caller to use `--ibt-path`.

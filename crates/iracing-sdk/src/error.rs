@@ -22,6 +22,19 @@ pub enum IRacingSDKError {
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 
+    /// This live reader is permanently retired after an observed disconnect.
+    /// Recreate the connection and its subscriptions to acquire a new session.
+    #[error("The live telemetry reader disconnected; create a new connection")]
+    LiveDisconnected,
+
+    /// This live reader is permanently retired after an invalidating failure.
+    #[error("The live telemetry reader was invalidated: {cause}")]
+    LiveInvalidated {
+        /// Original failure, retained across subsequent acquisition attempts.
+        #[source]
+        cause: std::sync::Arc<IRacingSDKError>,
+    },
+
     /// An I/O error occurred while reading or seeking an `.ibt` telemetry file.
     #[error("IBT file error: {path}")]
     File {
@@ -166,10 +179,12 @@ impl From<iracing_irsdk::Error> for IRacingSDKError {
 }
 
 impl IRacingSDKError {
-    /// Returns whether this error is potentially recoverable through retry.
+    /// Returns whether this error is potentially recoverable by retrying the current provider.
+    /// A retired live reader requires a new connection instead.
     pub fn is_retryable(&self) -> bool {
         match self {
             Self::Connection { .. } => true,
+            Self::LiveDisconnected | Self::LiveInvalidated { .. } => false,
             Self::Buffer { .. } => true,
             Self::File { .. } => false,
             Self::Memory { .. } => false,
@@ -190,6 +205,9 @@ impl IRacingSDKError {
     /// Returns suggested recovery actions for this error.
     pub fn recovery_suggestions(&self) -> Vec<&'static str> {
         match self {
+            Self::LiveDisconnected | Self::LiveInvalidated { .. } => {
+                vec!["Recreate the live connection and its subscriptions"]
+            }
             Self::Connection { .. } => vec![
                 "Ensure iRacing is running",
                 "Check Windows permissions for shared memory access",

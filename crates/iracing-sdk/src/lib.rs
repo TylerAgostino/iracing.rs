@@ -61,7 +61,7 @@ pub mod adapters;
 mod error;
 pub mod irsdk;
 mod parse_utils;
-mod reader;
+pub mod reader;
 pub mod telemetry_source;
 pub mod test_utils;
 pub mod types;

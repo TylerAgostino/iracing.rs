@@ -11,7 +11,7 @@ use anyhow::{Context, Result, bail, ensure};
 use futures::executor::block_on;
 use iracing_irsdk::{DiskSubHeader, Header, VariableHeader, VariableType, decode};
 use iracing_sdk::{
-    SchemaProvider, ibt::IbtReader, provider::Provider, providers::ibt::IbtProvider,
+    SchemaProvider, provider::Provider, providers::ibt::IbtProvider, reader::disk::IbtReader,
 };
 
 use crate::{VerificationReport, generate::hex_digest, model::FixtureManifest};
@@ -213,7 +213,7 @@ pub(crate) fn verify(repo_root: &Path) -> Result<VerificationReport> {
         let reader = IbtReader::from_bytes(data)
             .with_context(|| format!("opening {} through IbtReader", path.display()))?;
         ensure!(
-            reader.layout().frame_count() == fixture.num_frames,
+            reader.frame_count() == fixture.num_frames,
             "{} reader frame count mismatch",
             path.display()
         );

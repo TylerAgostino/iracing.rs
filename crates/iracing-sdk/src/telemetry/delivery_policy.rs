@@ -61,6 +61,10 @@ pub(crate) trait DeliveryPolicy: Send {
     /// permit. Returning `false` treats the error as terminal. A policy that
     /// carries a request-specific response channel should answer that request
     /// before returning.
+    /// Report a terminal provider failure, preserving the error for request
+    /// consumers and clearing live state. The task stops after this call.
+    async fn terminal_error(&mut self, permit: Self::Permit, error: IRacingSDKError);
+
     async fn error(&mut self, permit: Self::Permit, error: IRacingSDKError) -> bool;
 }
 
@@ -102,6 +106,10 @@ impl DeliveryPolicy for LatestDelivery {
         // None is the established live-channel signal that the current source
         // is no longer producing frames.
         let _ = self.frames.send(None);
+    }
+
+    async fn terminal_error(&mut self, permit: Self::Permit, _error: IRacingSDKError) {
+        self.end(permit).await;
     }
 
     async fn error(&mut self, _permit: Self::Permit, _error: IRacingSDKError) -> bool {
@@ -162,6 +170,10 @@ impl DeliveryPolicy for OnDemandDelivery {
         // EOF is returned only in response to a demand made after the final
         // frame; it cannot overwrite a previously delivered replay frame.
         let _ = permit.response.send(Ok(None));
+    }
+
+    async fn terminal_error(&mut self, permit: Self::Permit, error: IRacingSDKError) {
+        let _ = permit.response.send(Err(error));
     }
 
     async fn error(&mut self, permit: Self::Permit, error: IRacingSDKError) -> bool {

@@ -1,9 +1,5 @@
 //! Live telemetry connection for Windows
 
-mod builder;
-
-pub use builder::LiveConnectionBuilder;
-
 #[cfg(windows)]
 use crate::SchemaProvider;
 
@@ -46,12 +42,15 @@ pub struct LiveConnection {
 
 #[cfg(windows)]
 impl LiveConnection {
-    /// Start building a live telemetry connection.
-    pub fn builder() -> LiveConnectionBuilder {
-        LiveConnectionBuilder::default()
+    /// Connect to an active iRacing session and start telemetry acquisition.
+    ///
+    /// Connection failures return immediately; callers may retry construction.
+    pub fn new() -> Result<Self> {
+        Ok(Self::from_provider(LiveProvider::new()?))
     }
 
-    fn from_provider(provider: LiveProvider) -> Self {
+    /// Start telemetry acquisition from an existing live provider.
+    pub fn from_provider(provider: LiveProvider) -> Self {
         // Extract metadata
         let schema = provider.shared_schema();
         let source_hz = provider.tick_rate();
@@ -158,7 +157,7 @@ impl Drop for LiveConnection {
 #[cfg(not(windows))]
 /// Placeholder live connection type on unsupported platforms.
 ///
-/// Calling [`Self::builder`] and building it returns
+/// Calling [`Self::new`] returns
 /// [`crate::IRacingSDKError::UnsupportedPlatform`].
 pub struct LiveConnection {
     _private: (),
@@ -166,8 +165,24 @@ pub struct LiveConnection {
 
 #[cfg(not(windows))]
 impl LiveConnection {
-    /// Start building a live telemetry connection.
-    pub fn builder() -> LiveConnectionBuilder {
-        LiveConnectionBuilder::default()
+    /// Return an unsupported-platform error for live telemetry.
+    pub fn new() -> crate::Result<Self> {
+        Err(crate::IRacingSDKError::unsupported_platform(
+            "Live telemetry",
+            "Windows",
+        ))
+    }
+}
+
+#[cfg(all(test, not(windows)))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_reports_unsupported_platform() {
+        assert!(matches!(
+            LiveConnection::new(),
+            Err(crate::IRacingSDKError::UnsupportedPlatform { .. })
+        ));
     }
 }
