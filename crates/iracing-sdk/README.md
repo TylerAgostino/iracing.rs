@@ -139,7 +139,7 @@ impl FrameAdapter for Row {
 ## Features
 
 | Feature | Purpose |
-|---|---|
+| --- | --- |
 | `codegen` | Enables JSON schema generation helpers such as `session_root_schema`. |
 | `derive` | Re-exports telemetry adapter derive macros from `iracing-sdk-derive`, including `IRacingTelemetryFrame`. |
 | `schema-discovery` | Enables collection/overlay of unknown session fields (used with `codegen`). |
@@ -156,7 +156,7 @@ impl FrameAdapter for Row {
 ## Platform Matrix
 
 | Capability | Linux/macOS | Windows |
-|---|---|---|
+| --- | --- | --- |
 | `.ibt` replay (`IbtProvider`) | Yes | Yes |
 | Session parsing (`SessionInfo::parse`) | Yes | Yes |
 | `session schema type`, `session schema ibt`, and `session snapshot ibt` | Yes | Yes |
