@@ -158,7 +158,7 @@ impl IbtReader {
         let Some(bytes) = self.source.get(range) else {
             return Err(IRacingSDKError::parse_error(
                 "IbtReader::session_info_snapshot",
-                format!("Could not get session info bytes from source"),
+                "Could not get session info bytes from source",
             ));
         };
 
@@ -183,7 +183,7 @@ impl IbtReader {
         let Some(bytes) = self.source.get(range) else {
             return Err(IRacingSDKError::parse_error(
                 "IbtReader::variable_headers_snapshot",
-                format!("Could not get variable headers bytes from source"),
+                "Could not get variable headers bytes from source",
             ));
         };
 
