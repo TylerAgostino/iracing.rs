@@ -219,6 +219,16 @@ impl IbtReader {
     pub fn header(&self) -> &Header {
         &self.header
     }
+
+    /// The size of an individual frame.
+    pub fn frame_size(&self) -> usize {
+        self.layout.frame_size()
+    }
+
+    /// The total number of frames in the recording.
+    pub fn frame_count(&self) -> usize {
+        self.layout.frame_count()
+    }
 }
 
 #[cfg(test)]

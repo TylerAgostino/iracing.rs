@@ -34,8 +34,8 @@ impl IbtProvider {
     /// the layout's frame size, or if telemetry frames have no variable metadata.
     /// A zero-frame recording may have an empty schema.
     pub fn from_reader(mut reader: IbtReader) -> Result<Self> {
-        let frame_size = reader.layout().frame_size();
-        let frame_count = reader.layout().frame_count();
+        let frame_size = reader.frame_size();
+        let frame_count = reader.frame_count();
         let schema = match reader.variable_headers_snapshot()? {
             Some(snapshot) => VariableSchema::from_snapshot(snapshot, frame_size)?,
             None if frame_count == 0 => VariableSchema::from_headers(&[], frame_size)?,
@@ -66,7 +66,7 @@ impl IbtProvider {
 
     /// Returns the total number of telemetry frames in the recording.
     pub fn total_frames(&self) -> usize {
-        self.reader.layout().frame_count()
+        self.reader.frame_count()
     }
 
     fn tick_for_frame(index: usize) -> Result<u32> {
