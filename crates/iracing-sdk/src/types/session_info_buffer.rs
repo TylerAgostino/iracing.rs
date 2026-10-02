@@ -89,7 +89,6 @@ impl SessionInfoBuffer {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn from_checked_region(bytes: &[u8]) -> Self {
         Self {
             bytes: bytes.to_vec(),
@@ -121,6 +120,17 @@ impl From<SessionInfoBuffer> for String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checked_region_snapshot_owns_all_bytes() {
+        let original = b"WeekendInfo:\n Encoding: UTF8\n\0padding";
+        let mut source = original.to_vec();
+        let buffer = SessionInfoBuffer::from_checked_region(&source);
+        source.fill(0xff);
+        drop(source);
+        assert_eq!(buffer.as_bytes(), original);
+        assert_eq!(buffer.payload().decode(), "WeekendInfo:\n Encoding: UTF8\n");
+    }
 
     #[test]
     fn payload_borrows_only_text_and_preserves_region() {
