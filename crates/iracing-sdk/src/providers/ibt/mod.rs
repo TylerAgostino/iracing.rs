@@ -34,8 +34,8 @@ impl IbtProvider {
     /// the layout's frame size, or if telemetry frames have no variable metadata.
     /// A zero-frame recording may have an empty schema.
     pub fn from_reader(mut reader: IbtReader) -> Result<Self> {
-        let frame_size = reader.layout().frame_size();
-        let frame_count = reader.layout().frame_count();
+        let frame_size = reader.frame_size();
+        let frame_count = reader.frame_count();
         let schema = match reader.variable_headers_snapshot()? {
             Some(snapshot) => VariableSchema::from_snapshot(snapshot, frame_size)?,
             None if frame_count == 0 => VariableSchema::from_headers(&[], frame_size)?,
@@ -66,7 +66,7 @@ impl IbtProvider {
 
     /// Returns the total number of telemetry frames in the recording.
     pub fn total_frames(&self) -> usize {
-        self.reader.layout().frame_count()
+        self.reader.frame_count()
     }
 
     fn tick_for_frame(index: usize) -> Result<u32> {
@@ -158,7 +158,7 @@ mod tests {
                     assert_eq!(actual.count, expected.count);
                     assert_eq!(actual.units, expected.units);
                 }
-                for index in 0..reference.layout().frame_count() {
+                for index in 0..reference.frame_count() {
                     // Session snapshots move the source cursor between frame reads.
                     if index == 1 {
                         let yaml = block_on(provider.session_yaml(0))?.unwrap();
@@ -262,7 +262,7 @@ mod tests {
             .session_info()
             .expect("fixture has session information")
             .end();
-        let frame_size = reader.layout().frame_size();
+        let frame_size = reader.frame_size();
 
         bytes[offset_of!(Header, variable_count)..offset_of!(Header, variable_count) + 4]
             .copy_from_slice(&0_i32.to_le_bytes());
@@ -271,7 +271,7 @@ mod tests {
         bytes.truncate(metadata_end);
 
         let mut provider = IbtProvider::from_reader(IbtReader::from_bytes(bytes)?)?;
-        assert_eq!(provider.reader.layout().frame_count(), 0);
+        assert_eq!(provider.reader.frame_count(), 0);
         assert!(
             provider
                 .reader

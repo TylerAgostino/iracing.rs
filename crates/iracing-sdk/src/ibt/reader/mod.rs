@@ -36,11 +36,9 @@ use crate::{
 };
 use memmap2::Mmap;
 use source::IbtSource;
-use std::{
-    fs::File,
-    io::{Cursor, Seek, SeekFrom},
-    path::Path,
-};
+use std::{fs::File, path::Path};
+
+use zerocopy::FromBytes;
 
 /// Low-level IBT reader for indexed frames and fresh metadata snapshots.
 ///
@@ -77,37 +75,47 @@ impl IbtReader {
             path,
             source: std::io::Error::new(error.kind(), format!("Failed to map IBT source: {error}")),
         })?;
-        Self::from_source(IbtSource::Mapped(Cursor::new(mapped)))
+        Self::from_source(IbtSource::Mapped(mapped))
     }
 
     /// Parse owned in-memory `.ibt` data.
     pub fn from_bytes<B: Into<Vec<u8>>>(data: B) -> Result<Self> {
-        Self::from_source(IbtSource::Owned(Cursor::new(data.into())))
+        Self::from_source(IbtSource::Owned(data.into()))
     }
 
-    #[cfg(test)]
-    pub(crate) fn owned_bytes_mut(&mut self) -> &mut Vec<u8> {
-        match &mut self.source {
-            IbtSource::Owned(cursor) => cursor.get_mut(),
-            IbtSource::Mapped(_) => panic!("fault injection requires an owned source"),
-        }
-    }
+    fn from_source(source: IbtSource) -> Result<Self> {
+        let source_len = source.len();
+        let preamble_len = size_of::<Header>() + size_of::<DiskSubHeader>();
+        let Some(bytes) = source.get(0..preamble_len) else {
+            return Err(IRacingSDKError::parse_error(
+                "IbtReader::from_source",
+                "Source is shorter than the IBT preamble",
+            ));
+        };
 
-    fn from_source(mut source: IbtSource) -> Result<Self> {
-        let source_len = source.len()?;
-        source.seek(SeekFrom::Start(0)).map_err(|error| {
+        // The first 132 bytes should be the header
+        let (header, remainder) = Header::read_from_prefix(bytes).map_err(|_| {
             IRacingSDKError::parse_error(
-                "IBT source seek",
-                format!("Failed to seek to source start: {error}"),
+                "IbtReader::from_source",
+                "Could not parse header from source",
             )
         })?;
 
-        // Parse IBT header
-        let header = Header::try_from_reader(&mut source)?;
-        // Parse disk sub-header (note: may be corrupted, but we'll try)
-        let disk_header = DiskSubHeader::try_from_reader(&mut source)?;
+        // The remaining bytes should be the disk-header
+        let (disk_header, []) = DiskSubHeader::read_from_prefix(remainder).map_err(|_| {
+            IRacingSDKError::parse_error(
+                "IbtReader::from_source",
+                "Could not parse sub-header from source",
+            )
+        })?
+        else {
+            return Err(IRacingSDKError::parse_error(
+                "IbtReader::from_source",
+                "Preamble had trailing bytes",
+            ));
+        };
 
-        let layout = IbtLayout::try_from_headers(&header, source::layout_source_len(source_len)?)?;
+        let layout = IbtLayout::try_from_headers(&header, source_len)?;
 
         // Record counts are advisory; only the layout determines EOF.
         if disk_header.record_count > 0
@@ -145,15 +153,22 @@ impl IbtReader {
     /// # Errors
     /// Returns an error if the source cannot supply the complete region.
     pub fn session_info_snapshot(&mut self) -> Result<Option<SessionInfoBuffer>> {
-        self.layout
-            .metadata()
-            .session_info()
-            .map(|region| {
-                self.source
-                    .read_region(region.as_region())
-                    .map(SessionInfoBuffer::from_owned_checked_region)
-            })
-            .transpose()
+        let Some(region) = self.layout.metadata().session_info() else {
+            return Ok(None);
+        };
+
+        let range = region.as_region().as_range();
+
+        let Some(bytes) = self.source.get(range) else {
+            return Err(IRacingSDKError::parse_error(
+                "IbtReader::session_info_snapshot",
+                "Could not get session info bytes from source",
+            ));
+        };
+
+        let snapshot = SessionInfoBuffer::from_checked_region(bytes);
+
+        Ok(Some(snapshot))
     }
 
     /// Reads and decodes exactly the advertised variable-header records on each call.
@@ -163,14 +178,22 @@ impl IbtReader {
     /// # Errors
     /// Returns an error if reading or decoding the complete region fails.
     pub fn variable_headers_snapshot(&mut self) -> Result<Option<VariableHeadersBuffer>> {
-        self.layout
-            .metadata()
-            .variable_headers()
-            .map(|region| {
-                let bytes = self.source.read_region(region.as_region())?;
-                VariableHeadersBuffer::try_from_region_bytes(&bytes, region.count())
-            })
-            .transpose()
+        let Some(region) = self.layout.metadata().variable_headers() else {
+            return Ok(None);
+        };
+
+        let range = region.as_region().as_range();
+
+        let Some(bytes) = self.source.get(range) else {
+            return Err(IRacingSDKError::parse_error(
+                "IbtReader::variable_headers_snapshot",
+                "Could not get variable headers bytes from source",
+            ));
+        };
+
+        let snapshot = VariableHeadersBuffer::try_from_region_bytes(bytes, region.count())?;
+
+        Ok(Some(snapshot))
     }
 
     /// Reads exactly one indexed frame, regardless of prior source reads.
@@ -178,8 +201,17 @@ impl IbtReader {
     /// # Errors
     /// Returns an error if `index` is out of range or the complete frame cannot be read.
     pub fn frame(&mut self, index: usize) -> Result<Vec<u8>> {
-        self.source
-            .read_region(self.layout.frame(index)?.as_region())
+        let frame = self.layout.frame(index)?;
+        let frame_range = frame.as_region().as_range();
+
+        let Some(bytes) = self.source.get(frame_range) else {
+            return Err(IRacingSDKError::parse_error(
+                "IbtReader::frame",
+                format!("Could not get frame {} bytes from source", index),
+            ));
+        };
+
+        Ok(bytes.into())
     }
 
     /// Get disk metadata from the disk sub-header
@@ -191,6 +223,16 @@ impl IbtReader {
     pub fn header(&self) -> &Header {
         &self.header
     }
+
+    /// The size of an individual frame.
+    pub fn frame_size(&self) -> usize {
+        self.layout.frame_size()
+    }
+
+    /// The total number of frames in the recording.
+    pub fn frame_count(&self) -> usize {
+        self.layout.frame_count()
+    }
 }
 
 #[cfg(test)]
@@ -200,8 +242,35 @@ mod tests {
     use anyhow::{Context, Result};
 
     use std::fs::OpenOptions;
-    use std::io::Seek;
     use std::path::PathBuf;
+
+    impl IbtReader {
+        pub(crate) fn owned_bytes_mut(&mut self) -> &mut Vec<u8> {
+            match &mut self.source {
+                IbtSource::Owned(bytes) => bytes,
+                IbtSource::Mapped(_) => panic!("fault injection requires an owned source"),
+            }
+        }
+    }
+
+    #[test]
+    fn indexed_reads_are_independent_of_metadata_and_invalid_indices() -> Result<()> {
+        for mut reader in [
+            IbtReader::open(fixture_path()?)?,
+            IbtReader::from_bytes(fixture_bytes()?)?,
+        ] {
+            let first = reader.frame(0)?;
+            let last_index = reader.layout().frame_count() - 1;
+            let last = reader.frame(last_index)?;
+            reader.session_info_snapshot()?;
+            reader.variable_headers_snapshot()?;
+            assert!(reader.frame(last_index + 1).is_err());
+            assert!(reader.frame(usize::MAX).is_err());
+            assert_eq!(reader.frame(0)?, first);
+            assert_eq!(reader.frame(last_index)?, last);
+        }
+        Ok(())
+    }
 
     fn fixture_path() -> Result<PathBuf> {
         Ok(require_smallest_ibt_fixture()?)
@@ -294,6 +363,25 @@ mod tests {
     }
 
     #[test]
+    fn every_truncated_preamble_length_is_rejected() {
+        let preamble_size = size_of::<Header>() + size_of::<DiskSubHeader>();
+        for len in 0..preamble_size {
+            let error = IbtReader::from_bytes(vec![0; len])
+                .err()
+                .expect("truncated preamble must fail");
+            assert!(
+                matches!(error, IRacingSDKError::Parse { .. }),
+                "unexpected error for source length {len}: {error}"
+            );
+            assert!(
+                error
+                    .to_string()
+                    .contains("Source is shorter than the IBT preamble")
+            );
+        }
+    }
+
+    #[test]
     fn truncated_disk_sub_header_is_rejected() -> Result<()> {
         let bytes = fixture_bytes()?;
         let preamble_size = size_of::<Header>() + size_of::<DiskSubHeader>();
@@ -370,15 +458,6 @@ mod tests {
             );
             assert!(reader.frame(expected).is_err());
         }
-        Ok(())
-    }
-
-    #[test]
-    fn invalid_index_preserves_source_position() -> Result<()> {
-        let mut reader = IbtReader::from_bytes(fixture_bytes()?)?;
-        let position = reader.source.stream_position()?;
-        assert!(reader.frame(reader.layout().frame_count()).is_err());
-        assert_eq!(reader.source.stream_position()?, position);
         Ok(())
     }
 

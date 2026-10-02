@@ -89,25 +89,10 @@ impl SessionInfoBuffer {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn from_checked_region(bytes: &[u8]) -> Self {
         Self {
             bytes: bytes.to_vec(),
         }
-    }
-
-    /// Wraps owned bytes after a reader has copied an advertised region in full.
-    pub(crate) fn from_owned_checked_region(bytes: Vec<u8>) -> Self {
-        Self { bytes }
-    }
-
-    /// Wraps bytes after a reader has copied an advertised region in full.
-    ///
-    /// Construction is crate-private so source readers remain responsible for
-    /// bounds checking and exact-read semantics.
-    #[cfg(test)]
-    pub(crate) fn from_snapshot(bytes: Vec<u8>) -> Self {
-        Self::from_owned_checked_region(bytes)
     }
 }
 
@@ -121,6 +106,17 @@ impl From<SessionInfoBuffer> for String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checked_region_snapshot_owns_all_bytes() {
+        let original = b"WeekendInfo:\n Encoding: UTF8\n\0padding";
+        let mut source = original.to_vec();
+        let buffer = SessionInfoBuffer::from_checked_region(&source);
+        source.fill(0xff);
+        drop(source);
+        assert_eq!(buffer.as_bytes(), original);
+        assert_eq!(buffer.payload().decode(), "WeekendInfo:\n Encoding: UTF8\n");
+    }
 
     #[test]
     fn payload_borrows_only_text_and_preserves_region() {
@@ -173,7 +169,7 @@ mod tests {
     #[test]
     fn test_session_info_buffer_with_null_terminator() {
         let bytes = b"SessionInfo:\n  TrackName: test\0padding".to_vec();
-        let buffer = SessionInfoBuffer::from_snapshot(bytes);
+        let buffer = SessionInfoBuffer::from_checked_region(&bytes);
 
         let result: String = buffer.into();
         assert_eq!(result, "SessionInfo:\n  TrackName: test");
@@ -182,7 +178,7 @@ mod tests {
     #[test]
     fn test_session_info_buffer_without_null_terminator() {
         let bytes = b"SessionInfo:\n  TrackName: test".to_vec();
-        let buffer = SessionInfoBuffer::from_snapshot(bytes);
+        let buffer = SessionInfoBuffer::from_checked_region(&bytes);
 
         let result: String = buffer.into();
         assert_eq!(result, "SessionInfo:\n  TrackName: test");
@@ -192,7 +188,7 @@ mod tests {
     fn test_decode_yaml_from_utf8_with_special_characters() {
         let input = "DriverInfo:\n  UserName: \"José 🚗\"\n  CarScreenName: \"Mazda MX-5 – Cup\"";
         let bytes = input.as_bytes().to_vec();
-        let buffer = SessionInfoBuffer::from_snapshot(bytes);
+        let buffer = SessionInfoBuffer::from_checked_region(&bytes);
         let result: String = buffer.into();
 
         assert_eq!(result, input);
@@ -209,7 +205,7 @@ mod tests {
         ]
         .to_vec();
 
-        let buffer = SessionInfoBuffer::from_snapshot(bytes);
+        let buffer = SessionInfoBuffer::from_checked_region(&bytes);
         let result: String = buffer.into();
 
         assert_eq!(

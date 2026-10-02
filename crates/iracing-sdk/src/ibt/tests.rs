@@ -21,18 +21,18 @@ fn indexed_and_snapshot_reads_match_source_bytes() -> Result<()> {
             IbtReader::open(&path)?,
             IbtReader::from_bytes(bytes.clone())?,
         ] {
-            assert_eq!(reader.layout().frame_count(), fixture.num_frames);
-            assert_eq!(reader.layout().frame_size(), fixture.frame_size);
+            assert_eq!(reader.frame_count(), fixture.num_frames);
+            assert_eq!(reader.frame_size(), fixture.frame_size);
 
-            let selected = reader.layout().frame_count() / 2;
-            for index in [reader.layout().frame_count() - 1, 0, selected, 1] {
+            let selected = reader.frame_count() / 2;
+            for index in [reader.frame_count() - 1, 0, selected, 1] {
                 let start = reader.layout().frame_data_start() + index * fixture.frame_size;
                 assert_eq!(
                     reader.frame(index)?,
                     bytes[start..start + fixture.frame_size]
                 );
             }
-            assert!(reader.frame(reader.layout().frame_count()).is_err());
+            assert!(reader.frame(reader.frame_count()).is_err());
             assert!(reader.frame(usize::MAX).is_err());
 
             let session_region = reader
