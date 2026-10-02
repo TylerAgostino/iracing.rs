@@ -158,7 +158,7 @@ mod tests {
                     assert_eq!(actual.count, expected.count);
                     assert_eq!(actual.units, expected.units);
                 }
-                for index in 0..reference.layout().frame_count() {
+                for index in 0..reference.frame_count() {
                     // Session snapshots move the source cursor between frame reads.
                     if index == 1 {
                         let yaml = block_on(provider.session_yaml(0))?.unwrap();
@@ -262,7 +262,7 @@ mod tests {
             .session_info()
             .expect("fixture has session information")
             .end();
-        let frame_size = reader.layout().frame_size();
+        let frame_size = reader.frame_size();
 
         bytes[offset_of!(Header, variable_count)..offset_of!(Header, variable_count) + 4]
             .copy_from_slice(&0_i32.to_le_bytes());
@@ -271,7 +271,7 @@ mod tests {
         bytes.truncate(metadata_end);
 
         let mut provider = IbtProvider::from_reader(IbtReader::from_bytes(bytes)?)?;
-        assert_eq!(provider.reader.layout().frame_count(), 0);
+        assert_eq!(provider.reader.frame_count(), 0);
         assert!(
             provider
                 .reader
