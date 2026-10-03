@@ -1,7 +1,4 @@
-use serde::{Deserialize, Serialize};
 use std::{io::Read, ops::Range};
-use type_layout::TypeLayout;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use super::{StatusField, VariableBuffer, constants::IRSDK_MAX_BUFS as IRSDK_MAX_BUFFERS};
 use crate::{
@@ -15,13 +12,13 @@ use crate::{
     Debug,
     Clone,
     Copy,
-    Serialize,
-    Deserialize,
-    TypeLayout,
-    FromBytes,
-    IntoBytes,
-    KnownLayout,
-    Immutable,
+    serde::Serialize,
+    serde::Deserialize,
+    type_layout::TypeLayout,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
 )]
 pub struct Header {
     /// API version
@@ -190,6 +187,7 @@ mod tests {
     use super::*;
     use crate::{Error, constants::IRSDK_VER as IRSDK_VERSION};
     use std::mem::{align_of, offset_of};
+    use zerocopy::IntoBytes;
 
     fn valid_live_header() -> Header {
         Header::new(

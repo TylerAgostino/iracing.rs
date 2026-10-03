@@ -1,7 +1,4 @@
-use serde::{Deserialize, Serialize};
 use std::io::Read;
-use type_layout::TypeLayout;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use crate::{
     Result,
@@ -18,13 +15,13 @@ use crate::{
     Debug,
     Clone,
     Copy,
-    Serialize,
-    Deserialize,
-    TypeLayout,
-    FromBytes,
-    IntoBytes,
-    KnownLayout,
-    Immutable,
+    serde::Serialize,
+    serde::Deserialize,
+    type_layout::TypeLayout,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
 )]
 pub struct DiskSubHeader {
     /// Unix timestamp (`time_t`) of the session start date.

@@ -4,8 +4,6 @@ use serde::{
     Deserialize, Deserializer, Serialize,
     ser::{SerializeStruct, Serializer},
 };
-use type_layout::TypeLayout;
-use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use crate::parse_utils::{decode, encode, try_from_wire_bytes};
 use crate::{Error, Result};
@@ -18,7 +16,16 @@ use super::constants::{IRSDK_MAX_DESC, IRSDK_MAX_STRING};
 /// Serde exposes metadata as named fields, decodes the fixed-width text fields,
 /// and omits ABI padding. Deserialization validates fields through [`Self::new`].
 #[repr(C)]
-#[derive(Debug, Clone, Copy, TypeLayout, TryFromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    type_layout::TypeLayout,
+    zerocopy::TryFromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
+)]
 pub struct VariableHeader {
     /// Variable type (irsdk_VarType enum)
     pub variable_type: VariableType,
@@ -188,6 +195,7 @@ impl VariableHeader {
 mod tests {
     use super::*;
     use std::mem::{align_of, offset_of};
+    use zerocopy::IntoBytes;
 
     fn variable_header_bytes(variable_type: i32) -> [u8; size_of::<VariableHeader>()] {
         let mut bytes = [0; size_of::<VariableHeader>()];

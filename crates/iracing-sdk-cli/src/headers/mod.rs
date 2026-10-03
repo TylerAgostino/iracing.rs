@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Subcommand;
-use iracing_sdk::irsdk::{DiskSubHeader, Header, VariableBuffer, VariableHeader};
+use iracing_irsdk::{DiskSubHeader, Header, IbtHeader, VariableBuffer, VariableHeader};
 use std::{fs::File, io::Read, path::PathBuf};
 use type_layout::TypeLayout;
 
@@ -44,25 +44,28 @@ pub(crate) fn handle_command(command: Command) -> Result<()> {
             output,
             format,
         } => {
+            // Open the file
             let file = File::open(path)?;
-            let mut handle =
-                file.take(size_of::<Header>() as u64 + size_of::<DiskSubHeader>() as u64);
+            let mut handle = file.take(size_of::<IbtHeader>() as u64);
 
-            let header = Header::try_from_reader(&mut handle)?;
-            let sub_header = DiskSubHeader::try_from_reader(&mut handle)?;
+            // Read the header
+            let header = IbtHeader::try_from_reader(&mut handle)?;
 
+            // Write output
             let mut writer = DocumentWriter::from_parts(output.clone(), format)?;
             writer.write(&header)?;
-            writer.write(&sub_header)?;
             writer.finalize()
         }
         #[cfg(windows)]
         Command::Live { output, format } => {
             use crate::utils::get_connection;
 
+            // Open the connection
             let connection = get_connection()?;
+            // Read the header
             let header = connection.header_snapshot()?;
 
+            // Write output
             let mut writer = DocumentWriter::from_parts(output.clone(), format)?;
             writer.write(&header)?;
             writer.finalize()

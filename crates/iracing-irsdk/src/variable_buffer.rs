@@ -1,7 +1,3 @@
-use serde::{Deserialize, Serialize};
-use type_layout::TypeLayout;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
-
 use crate::{Result, parse_utils::read_wire_bytes};
 
 /// iRacing variable buffer information
@@ -10,13 +6,13 @@ use crate::{Result, parse_utils::read_wire_bytes};
     Debug,
     Clone,
     Copy,
-    Serialize,
-    Deserialize,
-    TypeLayout,
-    FromBytes,
-    IntoBytes,
-    KnownLayout,
-    Immutable,
+    serde::Serialize,
+    serde::Deserialize,
+    type_layout::TypeLayout,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
 )]
 pub struct VariableBuffer {
     /// Tick count when buffer was written
@@ -56,6 +52,7 @@ impl VariableBuffer {
 mod tests {
     use super::*;
     use std::mem::{align_of, offset_of, size_of};
+    use zerocopy::IntoBytes;
 
     #[test]
     fn variable_buffer_layout_matches_iracing_abi() {

@@ -38,9 +38,7 @@ use memmap2::Mmap;
 use source::IbtSource;
 use std::{fs::File, path::Path};
 
-use iracing_irsdk::{DiskSubHeader, Header};
-
-use zerocopy::FromBytes;
+use iracing_irsdk::{DiskSubHeader, Header, IbtHeader};
 
 /// Low-level IBT reader for indexed frames and fresh metadata snapshots.
 ///
@@ -51,8 +49,7 @@ use zerocopy::FromBytes;
 pub struct IbtReader {
     source: IbtSource,
 
-    header: Header,
-    disk_header: DiskSubHeader,
+    header: IbtHeader,
     layout: IbtLayout,
 }
 
@@ -95,30 +92,16 @@ impl IbtReader {
             ));
         };
 
-        // The first 132 bytes should be the header
-        let (header, remainder) = Header::read_from_prefix(bytes).map_err(|_| {
+        let ibt_header = IbtHeader::try_from_bytes(bytes).map_err(|_| {
             IRacingSDKError::parse_error(
                 "IbtReader::from_source",
-                "Could not parse header from source",
+                "Could not parse IBT header from source",
             )
         })?;
 
-        // The remaining bytes should be the disk-header
-        let (disk_header, []) = DiskSubHeader::read_from_prefix(remainder).map_err(|_| {
-            IRacingSDKError::parse_error(
-                "IbtReader::from_source",
-                "Could not parse sub-header from source",
-            )
-        })?
-        else {
-            return Err(IRacingSDKError::parse_error(
-                "IbtReader::from_source",
-                "Preamble had trailing bytes",
-            ));
-        };
+        let layout = IbtLayout::try_from_headers(ibt_header.header(), source_len)?;
 
-        let layout = IbtLayout::try_from_headers(&header, source_len)?;
-
+        let disk_header = ibt_header.disk_header();
         // Record counts are advisory; only the layout determines EOF.
         if disk_header.record_count > 0
             && layout.frame_count() > 0
@@ -133,8 +116,7 @@ impl IbtReader {
 
         Ok(Self {
             source,
-            header,
-            disk_header,
+            header: ibt_header,
             layout,
         })
     }
@@ -166,9 +148,6 @@ impl IbtReader {
         note = "use iracing_sdk::provider::VariableHeadersProvider::variable_headers; absent metadata returns an empty snapshot"
     )]
     pub fn variable_headers_snapshot(&mut self) -> Result<Option<VariableHeaders>> {
-        if self.layout.metadata().variable_headers().is_none() {
-            return Ok(None);
-        }
         self.variable_headers().map(Some)
     }
 
@@ -192,12 +171,12 @@ impl IbtReader {
 
     /// Get disk metadata from the disk sub-header
     pub fn disk_header(&self) -> &DiskSubHeader {
-        &self.disk_header
+        &self.header.disk_header()
     }
 
     /// Get the IBT header information
     pub fn header(&self) -> &Header {
-        &self.header
+        &self.header.header()
     }
 
     /// The size of an individual frame.
