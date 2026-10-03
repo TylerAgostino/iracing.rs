@@ -148,6 +148,10 @@ impl IbtReader {
         note = "use iracing_sdk::provider::VariableHeadersProvider::variable_headers; absent metadata returns an empty snapshot"
     )]
     pub fn variable_headers_snapshot(&mut self) -> Result<Option<VariableHeaders>> {
+        if self.layout.metadata().variable_headers().is_none() {
+            return Ok(None);
+        }
+
         self.variable_headers().map(Some)
     }
 
