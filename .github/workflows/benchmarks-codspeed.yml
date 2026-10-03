@@ -86,7 +86,7 @@ jobs:
             echo 'codspeed-action=373d6868929f444bc08d901fd0eb0ad52a8875ea'
             echo 'codspeed-runner=5.2.1'
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Build CodSpeed benchmarks
         run: >
           cargo codspeed build
