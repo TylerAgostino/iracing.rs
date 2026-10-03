@@ -30,25 +30,25 @@ fn bench_scalar_extraction(c: &mut Criterion) {
     let session_time = support::require_variable(&schema, "SessionTime", VariableType::Double, 1);
     assert_eq!(f64::from_bytes(&data, session_time).unwrap(), 0.5);
     group.bench_function("f64_session_time", |b| {
-        b.iter(|| black_box(f64::from_bytes(black_box(&data), session_time).unwrap()))
+        b.iter(|| black_box(f64::from_bytes(black_box(&data), black_box(session_time)).unwrap()))
     });
 
     let speed = support::require_variable(&schema, "Speed", VariableType::Float, 1);
     assert_eq!(f32::from_bytes(&data, speed).unwrap(), 0.5);
     group.bench_function("f32_speed", |b| {
-        b.iter(|| black_box(f32::from_bytes(black_box(&data), speed).unwrap()))
+        b.iter(|| black_box(f32::from_bytes(black_box(&data), black_box(speed)).unwrap()))
     });
 
     let gear = support::require_variable(&schema, "Gear", VariableType::Integer, 1);
     assert_eq!(i32::from_bytes(&data, gear).unwrap(), 1);
     group.bench_function("i32_gear", |b| {
-        b.iter(|| black_box(i32::from_bytes(black_box(&data), gear).unwrap()))
+        b.iter(|| black_box(i32::from_bytes(black_box(&data), black_box(gear)).unwrap()))
     });
 
     let marker = support::require_variable(&schema, "DriverMarker", VariableType::Boolean, 1);
     assert!(bool::from_bytes(&data, marker).unwrap());
     group.bench_function("bool_driver_marker", |b| {
-        b.iter(|| black_box(bool::from_bytes(black_box(&data), marker).unwrap()))
+        b.iter(|| black_box(bool::from_bytes(black_box(&data), black_box(marker)).unwrap()))
     });
 
     group.finish();
@@ -64,7 +64,9 @@ fn bench_array_extraction(c: &mut Criterion) {
     let values = Vec::<f32>::from_bytes(&data, lap_distance).unwrap();
     assert_eq!((values.len(), values[0], values[71]), (72, 0.5, 71.5));
     group.bench_function(BenchmarkId::new("f32_array", 72), |b| {
-        b.iter(|| black_box(Vec::<f32>::from_bytes(black_box(&data), lap_distance).unwrap()))
+        b.iter(|| {
+            black_box(Vec::<f32>::from_bytes(black_box(&data), black_box(lap_distance)).unwrap())
+        })
     });
 
     let track_surface =
@@ -72,7 +74,9 @@ fn bench_array_extraction(c: &mut Criterion) {
     let values = Vec::<i32>::from_bytes(&data, track_surface).unwrap();
     assert_eq!((values.len(), values[0], values[71]), (72, 1, 72));
     group.bench_function(BenchmarkId::new("i32_array", 72), |b| {
-        b.iter(|| black_box(Vec::<i32>::from_bytes(black_box(&data), track_surface).unwrap()))
+        b.iter(|| {
+            black_box(Vec::<i32>::from_bytes(black_box(&data), black_box(track_surface)).unwrap())
+        })
     });
 
     let pit_road = support::require_variable(&schema, "CarIdxOnPitRoad", VariableType::Boolean, 72);
@@ -81,7 +85,9 @@ fn bench_array_extraction(c: &mut Criterion) {
     assert!(values[0]);
     assert!(!values[1]);
     group.bench_function(BenchmarkId::new("bool_array", 72), |b| {
-        b.iter(|| black_box(Vec::<bool>::from_bytes(black_box(&data), pit_road).unwrap()))
+        b.iter(|| {
+            black_box(Vec::<bool>::from_bytes(black_box(&data), black_box(pit_road)).unwrap())
+        })
     });
 
     group.finish();
