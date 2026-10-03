@@ -7,13 +7,15 @@ use iracing_irsdk::{StatusField, VariableBuffer};
 
 use super::source::WaitResult;
 use crate::ByteRegion;
+use crate::provider::{SessionInformationBytesProvider, VariableHeadersProvider};
 use crate::{
-    IRacingSDKError, IRacingSessionString, Result, SessionInfoBuffer, SessionInfoRegion,
-    VariableHeadersBuffer, VariableHeadersRegion, VariableInfo, irsdk::Header,
-    windows::source::LiveSource,
+    IRacingSDKError, Result, SessionInfoBytes, SessionInfoRegion, VariableHeaders,
+    VariableHeadersRegion, windows::source::LiveSource,
 };
 use std::mem::offset_of;
 use std::time::Duration;
+
+use iracing_irsdk::Header;
 
 /// Direct connection to iRacing shared memory
 #[derive(Debug)]
@@ -26,21 +28,35 @@ pub struct Connection {
 
 impl Connection {
     /// Attempt to connect to iRacing shared memory
+    ///
+    /// # Errors
+    /// Returns an error when opening the mapping/event fails or the mapped
+    /// extent cannot hold the complete fixed SDK header.
     pub fn try_connect() -> Result<Self> {
         tracing::trace!("Attempting to connect to iRacing shared memory");
 
         // Initialize with i32::MAX to match C++ SDK's INT_MAX
         // The first observed tick establishes the baseline without a frame.
-        let connection = Self {
-            source: LiveSource::try_connect()?,
-
-            frame_data: Vec::new(),
-            last_tick_count: i32::MAX,
-        };
+        let connection = Self::from_source(LiveSource::try_connect()?)?;
 
         tracing::trace!("Successfully connected to iRacing shared memory");
 
         Ok(connection)
+    }
+
+    fn from_source(source: LiveSource) -> Result<Self> {
+        if source.len() < size_of::<Header>() {
+            return Err(IRacingSDKError::parse_error(
+                "Header",
+                "Mapped header is truncated",
+            ));
+        }
+        Ok(Self {
+            source,
+
+            frame_data: Vec::new(),
+            last_tick_count: i32::MAX,
+        })
     }
 
     /// Borrows the legacy header directly from the shared-memory mapping.
@@ -119,6 +135,11 @@ impl Connection {
                 .read_i32_unchecked(offset_of!(Header, tick_rate))
                 .unwrap_or(-1)
         }
+    }
+
+    /// The last processed tick count
+    pub fn last_tick_count(&self) -> i32 {
+        self.last_tick_count
     }
 
     /// Wait for new telemetry data (synchronous - blocks thread)
@@ -215,56 +236,22 @@ impl Connection {
         None
     }
 
-    /// Copies the session-information region advertised by the live header.
-    ///
-    /// Returns `None` when the header advertises no usable region.
-    pub fn session_info_buffer(&self) -> Option<SessionInfoBuffer> {
+    /// Copies session bytes, returning None on absence or acquisition failure.
+    #[deprecated(
+        note = "use iracing_sdk::provider::SessionInformationBytesProvider::session_info_snapshot to preserve acquisition errors"
+    )]
+    pub fn session_info_buffer(&self) -> Option<SessionInfoBytes> {
+        self.session_info_snapshot().ok().flatten()
+    }
+
+    /// Copies headers, returning None on absence or acquisition failure.
+    #[deprecated(
+        note = "use iracing_sdk::provider::VariableHeadersProvider::variable_headers; absent metadata returns an empty snapshot and failures return errors"
+    )]
+    pub fn variable_headers_buffer(&self) -> Option<VariableHeaders> {
         let header = self.header_snapshot().ok()?;
-
-        let region = SessionInfoRegion::try_from_header(&header).ok()??;
-
-        let bytes = self.copy_region(region.as_region())?;
-
-        Some(SessionInfoBuffer::from_owned_checked_region(bytes))
-    }
-
-    /// Returns decoded live session-information text with invalid control characters removed.
-    ///
-    /// Returns `None` when no usable region exists or the NUL-bounded payload is
-    /// empty after sanitization.
-    pub fn session_info(&self) -> Option<String> {
-        let buffer = self.session_info_buffer()?;
-        let session_info = IRacingSessionString::try_from(buffer).ok()?;
-
-        Some(session_info.into())
-    }
-
-    /// Copies the variable-header region advertised by the live header.
-    ///
-    /// Returns `None` when the header advertises no usable region.
-    pub fn variable_headers_buffer(&self) -> Option<VariableHeadersBuffer> {
-        let header = self.header_snapshot().ok()?;
-        let region = VariableHeadersRegion::try_from_header(&header).ok()??;
-
-        let variable_header_bytes = self.copy_region(region.as_region())?;
-
-        VariableHeadersBuffer::try_from_region_bytes(&variable_header_bytes, region.count()).ok()
-    }
-
-    /// Decodes all variable definitions from a copied variable-header region.
-    ///
-    /// Returns an empty vector when no usable variable-header region exists.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if any variable header contains invalid metadata.
-    pub fn get_variables(&self) -> Result<Vec<VariableInfo>> {
-        let buffer = match self.variable_headers_buffer() {
-            Some(b) => b,
-            _ => return Ok(Vec::new()),
-        };
-
-        buffer.iter().map(VariableInfo::try_from).collect()
+        VariableHeadersRegion::try_from_header(&header).ok()??;
+        self.variable_headers().ok()
     }
 
     fn copy_region(&self, region: ByteRegion) -> Option<Vec<u8>> {
@@ -313,6 +300,43 @@ impl Connection {
     }
 }
 
+impl SessionInformationBytesProvider for Connection {
+    fn session_info_snapshot(&self) -> Result<Option<SessionInfoBytes>> {
+        let header = self.header_snapshot()?;
+
+        let Some(region) = SessionInfoRegion::try_from_header(&header)? else {
+            return Ok(None);
+        };
+
+        let Some(bytes) = self.copy_region(region.as_region()) else {
+            return Err(IRacingSDKError::parse_error(
+                "Connection::session_info_snapshot",
+                "Could not get session info bytes from source",
+            ));
+        };
+
+        Ok(Some(SessionInfoBytes::from_checked_region(&bytes)))
+    }
+}
+
+impl VariableHeadersProvider for Connection {
+    fn variable_headers(&self) -> Result<VariableHeaders> {
+        let header = self.header_snapshot()?;
+        let Some(region) = VariableHeadersRegion::try_from_header(&header)? else {
+            return Ok(VariableHeaders::default());
+        };
+
+        let Some(bytes) = self.copy_region(region.as_region()) else {
+            return Err(IRacingSDKError::parse_error(
+                "Connection::variable_headers",
+                "Could not get variable headers bytes from source",
+            ));
+        };
+
+        VariableHeaders::try_from_bytes(&bytes, region.count())
+    }
+}
+
 // SAFETY: The Connection struct only holds Windows handles and a memory pointer
 // that are safe to send between threads for our read-only use case
 unsafe impl Send for Connection {}
@@ -322,6 +346,7 @@ unsafe impl Sync for Connection {}
 mod tests {
     use super::*;
     use crate::irsdk::{StatusField, VariableBuffer, constants::IRSDK_VER};
+    use zerocopy::IntoBytes;
 
     fn test_header(num_buf: i32) -> Header {
         Header::new(
@@ -346,6 +371,56 @@ mod tests {
         )
     }
 
+    fn connection_with_header(header: Header, len: usize) -> Connection {
+        let mut bytes = vec![0; len];
+        bytes[..size_of::<Header>()].copy_from_slice(header.as_bytes());
+        bytes[264..268].copy_from_slice(&[1, 2, 3, 4]);
+        Connection::from_source(LiveSource::test_source(&bytes)).unwrap()
+    }
+
+    #[test]
+    fn activation_rejects_truncated_headers() {
+        for len in [1, offset_of!(Header, tick_rate), size_of::<Header>() - 1] {
+            assert!(Connection::from_source(LiveSource::test_source(&vec![0; len])).is_err());
+        }
+    }
+
+    #[test]
+    fn acquisition_copies_published_frame_and_tracks_ticks() {
+        let mut connection = connection_with_header(test_header(4), 272);
+        assert_eq!(connection.tick_rate(), 60);
+        assert_eq!(connection.session_info_update(), 0);
+        assert!(connection.get_new_data().is_none());
+        assert_eq!(connection.last_tick_count(), 3);
+        connection.last_tick_count = 2;
+        assert_eq!(connection.get_new_data().unwrap(), &[1, 2, 3, 4]);
+        assert!(connection.get_new_data().is_none());
+        connection.last_tick_count = 4;
+        assert!(connection.get_new_data().is_none());
+        assert_eq!(connection.last_tick_count(), 3);
+    }
+
+    #[test]
+    fn acquisition_rejects_torn_frames_and_invalid_regions() {
+        for (offset, len, begin) in [(264, 4, 9), (-1, 4, 3), (270, 4, 3), (264, -1, 3)] {
+            let mut header = test_header(4);
+            header.buffers[2].buffer_offset = offset;
+            header.buffers[2].tick_count_begin = begin;
+            header.buffer_length = len;
+            let mut connection = connection_with_header(header, 272);
+            connection.last_tick_count = 2;
+            assert!(connection.get_new_data().is_none());
+            assert_eq!(connection.last_tick_count(), 2);
+        }
+        let mut header = test_header(4);
+        header.session_info_offset = 270;
+        header.session_info_length = 4;
+        header.variable_header_offset = 270;
+        let connection = connection_with_header(header, 272);
+        assert!(connection.session_info_snapshot().is_err());
+        assert!(connection.variable_headers().is_err());
+    }
+
     #[test]
     fn current_buffer_selection_uses_published_index_instead_of_highest_tick() {
         let header = test_header(4);
@@ -364,27 +439,9 @@ mod tests {
 
     #[test]
     #[ignore = "iracing_required"]
-    fn test_read_rpm_variable() {
-        let connection = Connection::try_connect().expect("Failed to connect to iRacing");
-        let variables = connection
-            .get_variables()
-            .expect("Could not get variables from connection");
-
-        // Look for exact "RPM" match to verify variable schema
-        let exact_rpm = variables.iter().find(|v| v.name == "RPM");
-        assert!(
-            exact_rpm.is_some(),
-            "RPM variable should be available in iRacing"
-        );
-
-        assert!(!variables.is_empty(), "Should have some variables");
-    }
-
-    #[test]
-    #[ignore = "iracing_required"]
     fn connects_to_live_iracing() {
         let connection = Connection::try_connect().expect("Failed to connect to iRacing");
-        let header = connection.header();
+        let header = connection.header_snapshot().unwrap();
 
         // Validate header structure sizes match expected C SDK layout
         assert_eq!(

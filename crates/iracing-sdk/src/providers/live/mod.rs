@@ -10,7 +10,9 @@ use std::{
 };
 
 use crate::{
-    FramePacket, Result, SchemaProvider, VariableSchema, WindowsConnection, provider::Provider,
+    FramePacket, IRacingSDKError, IRacingSessionString, Result, SchemaProvider, VariableSchema,
+    WindowsConnection,
+    provider::{Provider, SessionInformationBytesProvider, VariableHeadersProvider},
     windows::WaitResult,
 };
 
@@ -58,20 +60,20 @@ impl LiveProvider {
         poll_interval: Duration,
         max_no_connection_attempts: Option<u32>,
     ) -> Result<Self> {
-        let header = connection.header();
-        let variables = connection.get_variables()?;
-        let mut variable_map = std::collections::HashMap::new();
+        let header = connection.header_snapshot()?;
 
-        for var_info in variables {
-            variable_map.insert(var_info.name.clone(), var_info);
-        }
+        let frame_size = usize::try_from(header.buffer_length).map_err(|_| {
+            IRacingSDKError::parse_error(
+                "LiveProvider::from_parts",
+                "Could not parse frame size to usize",
+            )
+        })?;
 
-        let frame_size = header.buffer_length as usize;
-        let schema = Arc::new(VariableSchema::new(variable_map, frame_size)?);
+        let schema = VariableSchema::from_headers(&connection.variable_headers()?, frame_size)?;
 
         Ok(Self {
             connection,
-            schema,
+            schema: Arc::new(schema),
             poll_interval,
             max_no_connection_attempts,
         })
@@ -130,11 +132,7 @@ impl LiveProvider {
             if let Some(data) = self.connection.get_new_data() {
                 let frame_data = data.to_vec();
                 let header = self.connection.header_snapshot()?;
-                let Some(buffer) = header.current_variable_buffer() else {
-                    unreachable!("Buffers should exist")
-                };
-
-                let tick = buffer.tick_count as u32;
+                let tick = self.connection.last_tick_count();
                 let session_version = header.session_info_update as u32;
 
                 tracing::trace!(
@@ -146,7 +144,12 @@ impl LiveProvider {
 
                 return Ok(Some(FramePacket::new(
                     frame_data,
-                    tick,
+                    u32::try_from(tick).map_err(|_| {
+                        IRacingSDKError::parse_error(
+                            "LiveProvider::next_frame",
+                            "Negative tick count",
+                        )
+                    })?,
                     session_version,
                     self.shared_schema(),
                 )));
@@ -178,8 +181,13 @@ impl LiveProvider {
     async fn session_yaml_impl(&mut self) -> Result<Option<String>> {
         tracing::debug!("Fetching session YAML from shared memory");
 
-        // Get raw YAML from shared memory
-        Ok(self.connection.session_info())
+        let Some(buffer) = self.connection.session_info_snapshot()? else {
+            return Ok(None);
+        };
+
+        let session_info = IRacingSessionString::try_from(buffer)?;
+
+        Ok(Some(session_info.into()))
     }
 }
 

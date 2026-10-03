@@ -2,6 +2,7 @@
 name = "xtask"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 publish = false
 
 [lints]
@@ -14,3 +15,8 @@ serde_yaml_ng.workspace = true
 globset = "0.4"
 toml = "0.9"
 clap.workspace = true
+iracing-sdk = { workspace = true, features = ["codegen", "schema-discovery"] }
+iracing-irsdk = { workspace = true, features = ["codegen"] }
+schemars.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

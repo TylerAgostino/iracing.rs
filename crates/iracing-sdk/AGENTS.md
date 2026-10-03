@@ -19,6 +19,7 @@
 - `connections/`: higher-level `IbtConnection` and `LiveConnection` subscription APIs. `IbtConnection` coordinates one shared cursor across acknowledged subscribers; `LiveConnection` exposes watch-backed latest snapshots.
 - `telemetry/`: shared frame-read loop plus explicit delivery and session policies. `LatestDelivery` is the live default, while `Telemetry::spawn_ibt` selects `OnDemandDelivery`.
 - `adapters/`: `FrameAdapter`, `AdapterValidation`, `FieldExtraction`, `DefaultValue`, and `SchemaProvider` support typed per-frame extraction.
+- Live activation must validate the full fixed header before unchecked scalar reads. Preserve event ownership in blocking workers after async cancellation; private mapping/event tests run on Windows without the simulator.
 - `windows/`: `WindowsConnection`, `WaitResult`, shared-memory connection code, and broadcast helpers. Keep everything behind `#[cfg(windows)]`.
 - `../iracing-sdk-cli/src/`: consolidated CLI; session schemas and discovery enable the SDK features through its dependency. Standalone variable, primitive, and car-setup generators are deferred.
 - `examples/`: cross-platform disk examples plus Windows live/broadcast examples.
@@ -47,3 +48,10 @@
 - Benchmarks require `cargo bench -p iracing-sdk --features benchmark`.
 
 - Downstream fixture tests can enable the SDK's `test-utils` feature without enabling benchmark targets.
+
+## Soundness review routing
+
+For proof-oriented unsafe/invariant audits, compose `rust-soundness-review` and
+`rust-unsafe-ffi`. Read `docs/architecture/unsafe-boundaries.md` from the workspace
+root; trace current producers and consumers and keep unimplemented proposals
+separate from current-source conclusions.
