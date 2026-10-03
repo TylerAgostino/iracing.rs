@@ -75,7 +75,10 @@ jobs:
             echo '```text'
             rustc -Vv
             cargo -V
-            cargo codspeed --version
+            # cargo-codspeed 5.0.2 returns 1 for clap's version display.
+            codspeed_version=$(cargo codspeed --version 2>&1) || test "$?" -eq 1
+            test "$codspeed_version" = 'cargo-codspeed 5.0.2'
+            echo "$codspeed_version"
             echo "commit=$(git rev-parse HEAD)"
             sha256sum Cargo.lock
             echo 'target=x86_64-unknown-linux-gnu'
