@@ -94,8 +94,10 @@ pub(crate) fn handle_command(command: Command) -> Result<()> {
             use iracing_sdk::{TelemetryLayout, ibt::IbtReader, provider::VariableHeadersProvider};
 
             let reader = IbtReader::open(path)?;
-            let telemetry =
-                TelemetryLayout::try_from_headers(&reader.variable_headers()?, reader.frame_size())?;
+            let telemetry = TelemetryLayout::try_from_headers(
+                &reader.variable_headers()?,
+                reader.frame_size(),
+            )?;
             let inspection = layout::Inspection::new(reader.layout(), &telemetry);
             let mut writer = DocumentWriter::from_parts(output, format)?;
             match format {

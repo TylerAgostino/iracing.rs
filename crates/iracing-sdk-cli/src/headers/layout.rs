@@ -160,9 +160,15 @@ mod tests {
         let telemetry = TelemetryLayout::try_from_headers(&headers, reader.frame_size())?;
         let inspection = Inspection::new(reader.layout(), &telemetry);
         let physical = &inspection.ibt_layout;
-        assert_eq!(physical.source_length, std::fs::metadata(path)?.len() as usize);
+        assert_eq!(
+            physical.source_length,
+            std::fs::metadata(path)?.len() as usize
+        );
         assert_eq!(physical.frame_count, reader.frame_count());
-        assert_eq!(physical.frame_data.end, reader.layout().frames().as_region().end());
+        assert_eq!(
+            physical.frame_data.end,
+            reader.layout().frames().as_region().end()
+        );
         for (field, header) in inspection
             .telemetry_frame_layout
             .fields
