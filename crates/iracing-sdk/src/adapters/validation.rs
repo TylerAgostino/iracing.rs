@@ -18,6 +18,7 @@ pub enum FieldExtraction {
 }
 impl FieldExtraction {
     /// Returns the selected telemetry ID, when present.
+    #[inline]
     pub fn field_id(&self) -> Option<FieldId> {
         match self {
             Self::Required(id) => Some(*id),
@@ -95,6 +96,7 @@ impl AdapterValidation {
             .any(FieldExtraction::is_required)
     }
     /// Rejects use with a different layout, even when its field geometry matches.
+    #[inline]
     pub fn ensure_packet(&self, packet: &FramePacket) -> Result<()> {
         if !Arc::ptr_eq(&self.layout, packet.layout()) {
             return Err(IRacingSDKError::parse_error(
@@ -105,6 +107,7 @@ impl AdapterValidation {
         Ok(())
     }
     /// Decodes a declaration-ordered slot without name lookup or geometry recomputation.
+    #[inline]
     pub fn decode<T: VarData>(&self, packet: &FramePacket, slot: usize) -> Result<Option<T>> {
         self.ensure_packet(packet)?;
         let entry = self.extraction_plan.get(slot).ok_or_else(|| {
@@ -121,6 +124,7 @@ impl AdapterValidation {
             .transpose()
     }
     /// Returns a type default for a missing or undecodable slot.
+    #[inline]
     pub fn fetch_or_default<T: VarData + Default>(&self, packet: &FramePacket, slot: usize) -> T {
         self.ensure_packet(packet).expect("adapter layout mismatch");
         self.decode(packet, slot).ok().flatten().unwrap_or_default()
