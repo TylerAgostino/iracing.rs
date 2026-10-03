@@ -101,7 +101,7 @@ pub(crate) async fn handle_command(command: Command) -> Result<()> {
                 left.region()
                     .offset()
                     .cmp(&right.region().offset())
-                    .then_with(|| left.name().cmp(&right.name()))
+                    .then_with(|| left.name().cmp(right.name()))
             });
             let mut frames = Box::pin(connection.subscribe::<DynamicFrame>(UpdateRate::Native)?);
             let mut writer =
