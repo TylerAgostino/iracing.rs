@@ -171,12 +171,12 @@ impl IbtReader {
 
     /// Get disk metadata from the disk sub-header
     pub fn disk_header(&self) -> &DiskSubHeader {
-        &self.header.disk_header()
+        self.header.disk_header()
     }
 
     /// Get the IBT header information
     pub fn header(&self) -> &Header {
-        &self.header.header()
+        self.header.header()
     }
 
     /// The size of an individual frame.
