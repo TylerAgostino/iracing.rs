@@ -33,15 +33,7 @@ impl Connection {
     /// Returns an error when opening the mapping/event fails or the mapped
     /// extent cannot hold the complete fixed SDK header.
     pub fn try_connect() -> Result<Self> {
-        tracing::trace!("Attempting to connect to iRacing shared memory");
-
-        // Initialize with i32::MAX to match C++ SDK's INT_MAX
-        // The first observed tick establishes the baseline without a frame.
-        let connection = Self::from_source(LiveSource::try_connect()?)?;
-
-        tracing::trace!("Successfully connected to iRacing shared memory");
-
-        Ok(connection)
+        Self::from_source(LiveSource::try_connect()?)
     }
 
     fn from_source(source: LiveSource) -> Result<Self> {
@@ -53,7 +45,6 @@ impl Connection {
         }
         Ok(Self {
             source,
-
             frame_data: Vec::new(),
             last_tick_count: i32::MAX,
         })
