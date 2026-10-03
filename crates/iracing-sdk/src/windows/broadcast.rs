@@ -42,23 +42,79 @@
 //! # }
 //! ```
 
-use crate::{
-    IRacingSDKError, Result,
-    irsdk::{
-        BroadcastMessage as RawBroadcastMessage, CameraState, ChatCommandMode,
-        ForceFeedbackCommandMode, PitCommand, PitCommandMode, ReloadTexturesMode,
-        ReplayPositionMode, ReplaySearchMode, ReplayStateMode, TelemetryCommandMode,
-        VideoCaptureMode, constants::IRSDK_BROADCASTMSGNAME,
-    },
-    windows::utils::pad_car_number,
+use iracing_irsdk::{
+    BroadcastMessage as RawBroadcastMessage, CameraState, ChatCommandMode,
+    ForceFeedbackCommandMode, PitCommand, PitCommandMode, ReloadTexturesMode, ReplayPositionMode,
+    ReplaySearchMode, ReplayStateMode, TelemetryCommandMode, VideoCaptureMode,
+    constants::IRSDK_BROADCASTMSGNAME,
 };
-use {
-    windows::Win32::{
+
+use thiserror::Error;
+
+use windows::{
+    Win32::{
         Foundation::{LPARAM, WPARAM},
         UI::WindowsAndMessaging::{HWND_BROADCAST, RegisterWindowMessageW, SendNotifyMessageW},
     },
-    windows::core::PCWSTR,
+    core::Error as WindowsError,
+    core::PCWSTR,
 };
+
+#[derive(Error, Debug)]
+pub enum BroadcastError {
+    #[error("Failed to connect to iRacing: {reason}")]
+    Connection { reason: String },
+
+    #[error("Windows API error")]
+    Windows(#[from] WindowsError),
+
+    #[error("Command validation error: {reason}")]
+    Validation { reason: String },
+}
+
+type Result<T, E = BroadcastError> = std::result::Result<T, E>;
+
+/// Encodes a car number string into a sortable `u16`, keeping leading zeros
+/// distinct by folding them into the thousands place (`1` -> `1`, `01` -> `2001`,
+/// `001` -> `3001`). All-zero strings treat one zero as the number itself so we
+/// only count the extra zeros.
+pub fn pad_car_number(s: &str) -> u16 {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+
+    // Count leading zeros without allocating
+    let mut zeros = 0usize;
+    for &b in bytes {
+        if b == b'0' {
+            zeros += 1;
+        } else {
+            break;
+        }
+    }
+
+    // If the entire string was zeros, subtract 1
+    if zeros > 0 && zeros == len {
+        zeros -= 1;
+    }
+
+    // Parse the numeric value (leading zeros are fine). Fall back to zero for
+    // any malformed car numbers so we avoid panicking the caller.
+    let num: u16 = s.parse().unwrap_or(0);
+
+    if zeros > 0 {
+        let num_place = if num > 99 {
+            3
+        } else if num > 9 {
+            2
+        } else {
+            1
+        };
+
+        num + 1000 * (num_place + zeros as u16)
+    } else {
+        num
+    }
+}
 
 /// Messages that can be sent to the iRacing simulation.
 ///
@@ -121,7 +177,7 @@ fn encode_mode<T: Into<i32>>(mode: T) -> u16 {
 }
 
 impl TryFrom<BroadcastCommand> for BroadcastMessageFormat {
-    type Error = IRacingSDKError;
+    type Error = BroadcastError;
 
     fn try_from(command: BroadcastCommand) -> std::result::Result<Self, Self::Error> {
         let message = match command {
@@ -181,9 +237,8 @@ impl TryFrom<BroadcastCommand> for BroadcastMessageFormat {
             }
             BroadcastCommand::ChatCommandMacro(macro_number) => {
                 if !(1..=15).contains(&macro_number) {
-                    return Err(IRacingSDKError::Parse {
-                        context: "chat macro validation".to_string(),
-                        details: format!("macro id must be in range 1..=15, got {macro_number}"),
+                    return Err(BroadcastError::Validation {
+                        reason: format!("macro id must be in range 1..=15, got {macro_number}"),
                     });
                 }
 
@@ -276,9 +331,11 @@ impl Broadcast {
         let id = unsafe { RegisterWindowMessageW(PCWSTR::from_raw(message.as_ptr())) };
 
         if id == 0 {
-            return Err(IRacingSDKError::connection_failed(format!(
-                "Failed to register broadcast window message '{IRSDK_BROADCASTMSGNAME}'"
-            )));
+            return Err(BroadcastError::Connection {
+                reason: format!(
+                    "Failed to register broadcast window message '{IRSDK_BROADCASTMSGNAME}'"
+                ),
+            });
         }
 
         Ok(Self { message_id: id })
@@ -311,7 +368,7 @@ impl Broadcast {
                 WPARAM(wparam_value),
                 LPARAM(lparam_value as isize),
             )
-            .map_err(|e| IRacingSDKError::windows_api_error("SendNotifyMessageW", e))
+            .map_err(BroadcastError::from)
         }
     }
 }
@@ -468,11 +525,9 @@ mod tests {
 
         assert!(matches!(
             err,
-            IRacingSDKError::Parse {
-                context,
-                details
-            } if context == "chat macro validation"
-                && details == "macro id must be in range 1..=15, got 16"
+            BroadcastError::Validation {
+                reason
+            } if reason == "macro id must be in range 1..=15, got 16"
         ));
     }
 
