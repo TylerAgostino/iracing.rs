@@ -178,7 +178,7 @@ mod tests {
             assert_eq!(field.name, header.name());
             let (_, runtime) = telemetry.field_by_name(field.name).unwrap();
             assert_eq!(field.offset, runtime.region().offset());
-            assert_eq!(field.end, runtime.region().end());
+            assert_eq!(field.end, runtime.region().as_region().end());
             assert_eq!(field.size, runtime.region().len());
             assert_eq!(field.count, runtime.count());
             assert_eq!(field.unit, runtime.metadata().unit());
