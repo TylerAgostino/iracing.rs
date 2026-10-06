@@ -8,8 +8,9 @@ mod live;
 #[cfg(windows)]
 fn main() -> anyhow::Result<()> {
     use anyhow::{Context, anyhow, bail};
-    use iracing_sdk::{VariableSchema, WaitResult, WindowsConnection};
     use iracing_sdk::provider::VariableHeadersProvider;
+    use iracing_sdk::windows::WaitResult;
+    use iracing_sdk::{VariableSchema, WindowsConnection};
     use serde_json::json;
     use std::{hint::black_box, time::Instant};
 
