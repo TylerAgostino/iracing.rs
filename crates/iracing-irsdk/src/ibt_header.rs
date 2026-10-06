@@ -14,13 +14,13 @@ use crate::{Error, Result};
     Debug,
     Clone,
     Copy,
-    serde::Serialize,
-    serde::Deserialize,
     zerocopy::FromBytes,
     zerocopy::IntoBytes,
     zerocopy::KnownLayout,
     zerocopy::Immutable,
 )]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "debug", derive(type_layout::TypeLayout))]
 pub struct IbtHeader {
     header: Header,
     disk_header: DiskSubHeader,

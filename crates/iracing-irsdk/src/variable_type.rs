@@ -11,31 +11,29 @@ use std::fmt;
     PartialEq,
     Eq,
     Hash,
-    serde::Serialize,
-    serde::Deserialize,
     zerocopy::Immutable,
     zerocopy::KnownLayout,
     zerocopy::TryFromBytes,
     zerocopy::IntoBytes,
 )]
-#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VariableType {
     /// `irsdk_char`.
-    #[serde(alias = "Char")]
+    #[cfg_attr(feature = "serde", serde(alias = "Char"))]
     Character = 0,
     /// `irsdk_bool`.
-    #[serde(alias = "Bool")]
+    #[cfg_attr(feature = "serde", serde(alias = "Bool"))]
     Boolean = 1,
     /// `irsdk_int`.
-    #[serde(alias = "Int32")]
+    #[cfg_attr(feature = "serde", serde(alias = "Int32"))]
     Integer = 2,
     /// `irsdk_bitField`.
     BitField = 3,
     /// `irsdk_float`.
-    #[serde(alias = "Float32")]
+    #[cfg_attr(feature = "serde", serde(alias = "Float32"))]
     Float = 4,
     /// `irsdk_double`.
-    #[serde(alias = "Float64")]
+    #[cfg_attr(feature = "serde", serde(alias = "Float64"))]
     Double = 5,
 }
 
@@ -78,27 +76,12 @@ impl From<VariableType> for i32 {
     }
 }
 
-#[cfg(feature = "codegen")]
-impl From<VariableType> for schemars::Schema {
-    fn from(value: VariableType) -> Self {
-        let type_value = match value {
-            VariableType::Character => "string",
-            VariableType::Boolean => "boolean",
-            VariableType::Integer | VariableType::BitField => "integer",
-            VariableType::Float | VariableType::Double => "number",
-        };
-
-        schemars::json_schema!({
-            "type": type_value
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "serde")]
     fn legacy_metadata_names_deserialize_to_sdk_types() {
         for (legacy, expected) in [
             ("Char", VariableType::Character),

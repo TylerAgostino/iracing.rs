@@ -12,14 +12,13 @@ use crate::{
     Debug,
     Clone,
     Copy,
-    serde::Serialize,
-    serde::Deserialize,
-    type_layout::TypeLayout,
     zerocopy::FromBytes,
     zerocopy::IntoBytes,
     zerocopy::KnownLayout,
     zerocopy::Immutable,
 )]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "debug", derive(type_layout::TypeLayout))]
 pub struct Header {
     /// API version
     pub version: i32,
@@ -46,7 +45,7 @@ pub struct Header {
     /// Index of most recently written buffer (`irsdk_header::curBuf`)
     pub current_buffer: u8,
     /// Alignment padding (`irsdk_header::pad1`)
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     _pad: [u8; 3],
     /// Telemetry buffer descriptors
     pub buffers: [VariableBuffer; Self::MAX_BUFFERS],
@@ -350,5 +349,17 @@ mod tests {
             result,
             Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::UnexpectedEof
         ));
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn serialization_round_trip_without_padding() {
+        let header = valid_live_header();
+
+        let header_json = serde_json::to_value(header).unwrap();
+        assert!(header_json.get("_pad").is_none());
+        assert!(header_json["buffers"][0].get("_pad").is_none());
+        let decoded_header: Header = serde_json::from_value(header_json).unwrap();
+        assert_eq!(decoded_header.as_bytes(), header.as_bytes());
     }
 }

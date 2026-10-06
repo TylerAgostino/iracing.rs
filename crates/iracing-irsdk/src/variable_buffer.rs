@@ -6,14 +6,13 @@ use crate::{Result, parse_utils::read_wire_bytes};
     Debug,
     Clone,
     Copy,
-    serde::Serialize,
-    serde::Deserialize,
-    type_layout::TypeLayout,
     zerocopy::FromBytes,
     zerocopy::IntoBytes,
     zerocopy::KnownLayout,
     zerocopy::Immutable,
 )]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "debug", derive(type_layout::TypeLayout))]
 pub struct VariableBuffer {
     /// Tick count when buffer was written
     pub tick_count: i32,
@@ -22,7 +21,7 @@ pub struct VariableBuffer {
     /// Tick count written before a frame write begins, used for torn-read detection
     pub tick_count_begin: i32,
     /// Padding to maintain alignment
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     _pad: [i32; 1],
 }
 
@@ -99,5 +98,16 @@ mod tests {
                 actual: 15,
             })
         ));
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn serialization_round_trip_without_padding() {
+        let buffer = VariableBuffer::new(10, 20, 9);
+
+        let buffer_json = serde_json::to_value(buffer).unwrap();
+        assert!(buffer_json.get("_pad").is_none());
+        let decoded_buffer: VariableBuffer = serde_json::from_value(buffer_json).unwrap();
+        assert_eq!(decoded_buffer.as_bytes(), buffer.as_bytes());
     }
 }

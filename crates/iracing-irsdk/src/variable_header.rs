@@ -1,10 +1,5 @@
 use std::{borrow::Cow, ops::Range};
 
-use serde::{
-    Deserialize, Deserializer, Serialize,
-    ser::{SerializeStruct, Serializer},
-};
-
 use crate::parse_utils::{decode, encode, try_from_wire_bytes};
 use crate::{Error, Result};
 
@@ -20,12 +15,12 @@ use super::constants::{IRSDK_MAX_DESC, IRSDK_MAX_STRING};
     Debug,
     Clone,
     Copy,
-    type_layout::TypeLayout,
     zerocopy::TryFromBytes,
     zerocopy::IntoBytes,
     zerocopy::KnownLayout,
     zerocopy::Immutable,
 )]
+#[cfg_attr(feature = "debug", derive(type_layout::TypeLayout))]
 pub struct VariableHeader {
     /// Variable type (irsdk_VarType enum)
     pub variable_type: VariableType,
@@ -45,11 +40,14 @@ pub struct VariableHeader {
     unit: [u8; IRSDK_MAX_STRING],
 }
 
-impl Serialize for VariableHeader {
+#[cfg(feature = "serde")]
+impl serde::Serialize for VariableHeader {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
-        S: Serializer,
+        S: serde::Serializer,
     {
+        use serde::ser::SerializeStruct;
+
         let mut header = serializer.serialize_struct("VariableHeader", 7)?;
         header.serialize_field("variable_type", &self.variable_type)?;
         header.serialize_field("offset", &self.offset)?;
@@ -62,12 +60,13 @@ impl Serialize for VariableHeader {
     }
 }
 
-impl<'de> Deserialize<'de> for VariableHeader {
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for VariableHeader {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
-        D: Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
-        #[derive(Deserialize)]
+        #[derive(serde::Deserialize)]
         struct Metadata {
             variable_type: VariableType,
             offset: i32,
@@ -78,7 +77,7 @@ impl<'de> Deserialize<'de> for VariableHeader {
             unit: String,
         }
 
-        let metadata = Metadata::deserialize(deserializer)?;
+        let metadata = <Metadata as serde::Deserialize>::deserialize(deserializer)?;
         Self::new(
             metadata.variable_type,
             metadata.offset,
@@ -277,6 +276,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn serializes_header_metadata_without_wire_padding() {
         let header = VariableHeader::new(
             VariableType::Float,
@@ -414,5 +414,40 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn deserialization_rejects_invalid_metadata() {
+        let invalid = serde_json::json!({
+            "variable_type": "Float",
+            "offset": -1,
+            "count": 1,
+            "count_as_time": false,
+            "name": "Speed",
+            "description": "Vehicle speed",
+            "unit": "m/s",
+        });
+        assert!(serde_json::from_value::<VariableHeader>(invalid).is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn serialization_round_trip() {
+        let variable = VariableHeader::new(
+            VariableType::Float,
+            8,
+            1,
+            true,
+            "Speed",
+            "Vehicle speed",
+            "m/s",
+        )
+        .unwrap();
+
+        let variable_json = serde_json::to_value(variable).unwrap();
+        assert_eq!(variable_json["count_as_time"], true);
+        let decoded_variable: VariableHeader = serde_json::from_value(variable_json).unwrap();
+        assert_eq!(decoded_variable.as_bytes(), variable.as_bytes());
     }
 }
