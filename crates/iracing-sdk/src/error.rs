@@ -144,25 +144,18 @@ pub enum IRacingSDKError {
         /// Rust wire type that rejected the bytes.
         target: &'static str,
     },
-}
 
-impl From<iracing_irsdk::Error> for IRacingSDKError {
-    fn from(error: iracing_irsdk::Error) -> Self {
-        match error {
-            iracing_irsdk::Error::WireSize { expected, actual } => {
-                Self::WireSize { expected, actual }
-            }
-            iracing_irsdk::Error::InvalidWireValue { target } => Self::InvalidWireValue { target },
-            iracing_irsdk::Error::Parse { context, details } => Self::Parse { context, details },
-            iracing_irsdk::Error::InvalidConfiguration { field, reason } => {
-                Self::InvalidConfiguration { field, reason }
-            }
-            _ => Self::Parse {
-                context: "iRacing SDK wire data".to_owned(),
-                details: error.to_string(),
-            },
-        }
-    }
+    /// An error from the broadcast sdk crate.
+    #[error("Broadcast SDK error")]
+    Broadcast(#[from] iracing_broadcast_sdk::error::Error),
+
+    /// An error from the irsdk crate.
+    #[error("IRSDK wire-type error")]
+    IRSDK(#[from] iracing_irsdk::Error),
+
+    /// An error from the widestring crate.
+    #[error("Wide-string conversion error")]
+    Widestring(#[from] widestring::error::ContainsNul<u16>),
 }
 
 impl<T: zerocopy::TryFromBytes + zerocopy::KnownLayout + ?Sized>
@@ -197,6 +190,15 @@ impl IRacingSDKError {
             Self::InvalidConfiguration { .. } => false,
             Self::WireSize { .. } => false,
             Self::InvalidWireValue { .. } => false,
+            Self::Broadcast(e) => match e {
+                iracing_broadcast_sdk::error::Error::Connection { .. } => true,
+                #[cfg(windows)]
+                iracing_broadcast_sdk::error::Error::Windows(_) => true,
+                iracing_broadcast_sdk::error::Error::Validation { .. } => false,
+                iracing_broadcast_sdk::error::Error::Conversion(_) => false,
+            },
+            Self::IRSDK(_) => false,
+            Self::Widestring(_) => false,
         }
     }
 
@@ -269,6 +271,34 @@ impl IRacingSDKError {
             Self::InvalidWireValue { .. } => {
                 vec!["Verify the source data is intact and uses a supported iRacing SDK format"]
             }
+            Self::Broadcast(e) => match e {
+                iracing_broadcast_sdk::error::Error::Connection { .. } => vec![
+                    "Ensure iRacing is running",
+                    "Check Windows permissions for shared memory access",
+                    "Verify iRacing SDK version compatibility",
+                    "Try restarting iRacing",
+                ],
+                #[cfg(windows)]
+                iracing_broadcast_sdk::error::Error::Windows(_) => vec![
+                    "Check Windows API permissions",
+                    "Verify system resources availability",
+                    "Check Windows version compatibility",
+                ],
+                iracing_broadcast_sdk::error::Error::Validation { .. } => vec!["Check inputs"],
+                iracing_broadcast_sdk::error::Error::Conversion(_) => {
+                    vec!["Create a GitHub issue"]
+                }
+            },
+            Self::IRSDK(e) => match e {
+                iracing_irsdk::Error::WireSize { .. } => vec!["Contact the maintainer"],
+                iracing_irsdk::Error::InvalidWireValue { .. } => {
+                    vec!["Verify the source data is intact and uses a supported iRacing SDK format"]
+                }
+                iracing_irsdk::Error::Parse { .. } => vec!["Contact the maintainer"],
+                iracing_irsdk::Error::InvalidConfiguration { .. } => vec!["Contact the maintainer"],
+                iracing_irsdk::Error::Io(_) => vec!["Contact the maintainer"],
+            },
+            Self::Widestring(_) => vec!["Contact the maintainer"],
         }
     }
 
@@ -593,20 +623,6 @@ mod tests {
         // Runtime check: Error trait is implemented
         let error = IRacingSDKError::connection_failed("test");
         let _: &dyn std::error::Error = &error;
-    }
-
-    #[test]
-    fn wire_validity_conversion_preserves_the_domain_error() {
-        let error = IRacingSDKError::from(iracing_irsdk::Error::InvalidWireValue {
-            target: "iracing_irsdk::VariableHeader",
-        });
-
-        assert!(matches!(
-            error,
-            IRacingSDKError::InvalidWireValue {
-                target: "iracing_irsdk::VariableHeader"
-            }
-        ));
     }
 
     #[test]
