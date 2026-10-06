@@ -80,11 +80,16 @@ the reported duration.
 | --- | --- | --- |
 | `telemetry-diagnostics` | Allocation counts, delivery latency percentiles, and replacement/acknowledgement counts | Allocator and timestamp instrumentation perturb the hot path |
 | `ibt-reader-memory` | Retained and peak application heap for file-backed and legacy-equivalent in-memory readers | Excludes kernel/filesystem page cache |
-| `live-telemetry-diagnostic` | Live cadence, inter-arrival percentiles, and skipped/coalesced ticks | Requires Windows and an active simulator; results are environment-dependent |
+| `live-telemetry-diagnostic` | Live cadence, per-subscriber inter-arrival percentiles, skipped/coalesced ticks, and 1/4-subscriber skew | Requires Windows and an active simulator; results are environment-dependent |
+| `live-acquisition-diagnostic` | Current owned `LiveFrameSnapshot` acquisition cost, copied bytes, and no-frame/event counts | Requires Windows and an active simulator; accepted operations only |
 
 Run a deterministic diagnostic with the same `cargo bench --bench <target>`
-form. `live-telemetry-diagnostic` is compile-only in hosted CI and should be run
-manually on Windows.
+form. The two live diagnostics are compile-only in hosted CI and should be run
+manually on Windows. They accept `--profile <machine-label>` and optional
+`--output <path>` after Cargo's `--`, and write versioned JSON by default to
+`target/live-benchmarks/runs/`. See
+[the live runbook](../../../docs/benchmarks/live.md) for durable local recording,
+explicit baseline labels, comparison, and promotion into reviewed Git history.
 
 `ibt-reader-memory` asserts that the file-backed reader retains less than half
 the recording length while the in-memory baseline retains at least the source
@@ -111,8 +116,9 @@ production code.
 | `telemetry-diagnostics` | E | Diagnostic and invariant checks only |
 | `ibt-reader-memory` | E | Diagnostic and invariant checks only |
 | `live-telemetry-diagnostic` | E | Manual live only; compile-only in hosted CI |
+| `live-acquisition-diagnostic` | E | Manual live only; compile-only in hosted CI |
 
-The quality workflow compiles all eight targets on Ubuntu and Windows.
+The quality workflow compiles all nine targets on Ubuntu and Windows.
 CodSpeed simulates the three deterministic CPU/in-memory targets for affected
 pull requests and main pushes. CodSpeed simulation and Criterion wall-time
 results are different measurement domains and must not be compared numerically.
