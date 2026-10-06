@@ -37,24 +37,34 @@ pub(crate) enum Command {
     },
 }
 
-pub(crate) fn handle_command(command: Command) -> Result<()> {
-    match command {
-        Command::Ibt {
-            path,
-            output,
-            format,
-        } => {
-            let reader = get_disk_reader(&path)?;
+impl Command {
+    /// Write the IBT or live variable headers to the selected destination and format.
+    ///
+    /// File output creates or truncates the destination.
+    ///
+    /// # Errors
+    ///
+    /// Propagates source access, variable-header retrieval, serialization,
+    /// and output creation, write, or flush errors.
+    pub fn run(self) -> Result<()> {
+        match self {
+            Command::Ibt {
+                path,
+                output,
+                format,
+            } => {
+                let reader = get_disk_reader(&path)?;
 
-            write_headers(reader, output, format)
-        }
-        #[cfg(windows)]
-        Command::Live { output, format } => {
-            use crate::utils::get_connection;
+                write_headers(reader, output, format)
+            }
+            #[cfg(windows)]
+            Command::Live { output, format } => {
+                use crate::utils::get_connection;
 
-            let connection = get_connection()?;
+                let connection = get_connection()?;
 
-            write_headers(connection, output, format)
+                write_headers(connection, output, format)
+            }
         }
     }
 }

@@ -35,28 +35,39 @@ pub(crate) enum Command {
     },
 }
 
-pub(crate) fn handle_command(command: Command) -> Result<()> {
-    match command {
-        #[cfg(windows)]
-        Command::Live { output, format } => {
-            use crate::utils::get_connection;
+impl Command {
+    /// Write unknown session fields from the selected IBT or live source.
+    ///
+    /// Absent session information produces an empty list. File output creates or
+    /// truncates the destination using the selected format.
+    ///
+    /// # Errors
+    ///
+    /// Propagates source access, session parsing, serialization, and output errors;
+    /// these failures are not converted to an empty list.
+    pub(crate) fn run(self) -> Result<()> {
+        match self {
+            #[cfg(windows)]
+            Command::Live { output, format } => {
+                use crate::utils::get_connection;
 
-            let connection = get_connection()?;
-            write_unknown_fields(&connection, output.clone(), format)?;
-            tracing::info!(output=%output, format=%format, "Wrote live session unknown fields snapshot.");
+                let connection = get_connection()?;
+                write_unknown_fields(&connection, output.clone(), format)?;
+                tracing::info!(output=%output, format=%format, "Wrote live session unknown fields snapshot.");
+            }
+            Command::Ibt {
+                path,
+                output,
+                format,
+            } => {
+                let reader = get_disk_reader(&path)?;
+                write_unknown_fields(&reader, output.clone(), format)?;
+                tracing::info!(ibt_path=%path.display(), output=%output, format=%format, "Wrote disk session unknown fields snapshot.");
+            }
         }
-        Command::Ibt {
-            path,
-            output,
-            format,
-        } => {
-            let reader = get_disk_reader(&path)?;
-            write_unknown_fields(&reader, output.clone(), format)?;
-            tracing::info!(ibt_path=%path.display(), output=%output, format=%format, "Wrote disk session unknown fields snapshot.");
-        }
+
+        Ok(())
     }
-
-    Ok(())
 }
 
 fn write_unknown_fields(

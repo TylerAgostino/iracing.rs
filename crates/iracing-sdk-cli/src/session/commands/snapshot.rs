@@ -36,26 +36,36 @@ pub(crate) enum Command {
     },
 }
 
-pub(crate) fn handle_command(command: Command) -> Result<()> {
-    match command {
-        Command::Ibt {
-            path,
-            output,
-            format,
-        } => {
-            let reader = get_disk_reader(&path)?;
-            write_session_info(&reader, output.clone(), format)?;
-            tracing::info!(ibt_path=%path.display(), output=%output, encoding=%format, "Wrote disk session snapshot.");
-            Ok(())
-        }
-        #[cfg(windows)]
-        Command::Live { output, format } => {
-            use crate::utils::get_connection;
+impl Command {
+    /// Write parsed IBT or live session information in the selected output format.
+    ///
+    /// File output creates or truncates the destination.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when session information is absent. Propagates source access,
+    /// session parsing, serialization, and output errors.
+    pub(crate) fn run(self) -> Result<()> {
+        match self {
+            Command::Ibt {
+                path,
+                output,
+                format,
+            } => {
+                let reader = get_disk_reader(&path)?;
+                write_session_info(&reader, output.clone(), format)?;
+                tracing::info!(ibt_path=%path.display(), output=%output, encoding=%format, "Wrote disk session snapshot.");
+                Ok(())
+            }
+            #[cfg(windows)]
+            Command::Live { output, format } => {
+                use crate::utils::get_connection;
 
-            let connection = get_connection()?;
-            write_session_info(&connection, output.clone(), format)?;
-            tracing::info!(output=%output, encoding=%format, "Wrote live session snapshot.");
-            Ok(())
+                let connection = get_connection()?;
+                write_session_info(&connection, output.clone(), format)?;
+                tracing::info!(output=%output, encoding=%format, "Wrote live session snapshot.");
+                Ok(())
+            }
         }
     }
 }
