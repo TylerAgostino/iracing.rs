@@ -28,14 +28,12 @@
 //! - Frame reading is allocation-minimal except for the returned frame bytes
 //! - Indexed frame geometry is O(1)
 
-mod source;
-
 use crate::{
     IRacingSDKError, IbtLayout, Result, SessionInfoBytes, VariableHeaders,
     provider::{SessionInformationBytesProvider, VariableHeadersProvider},
+    source::ibt::IbtSource;
 };
 use memmap2::Mmap;
-use source::IbtSource;
 use std::{fs::File, path::Path};
 
 use iracing_irsdk::{DiskSubHeader, Header, IbtHeader};

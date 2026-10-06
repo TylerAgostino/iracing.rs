@@ -2,12 +2,12 @@ use memmap2::Mmap;
 use std::ops::Range;
 use zerocopy::IntoBytes;
 
-pub(crate) enum IbtSource {
+pub(crate) enum Source {
     Mapped(Mmap),
     Owned(Vec<u8>),
 }
 
-impl IbtSource {
+impl Source {
     pub fn len(&self) -> usize {
         match self {
             Self::Mapped(source) => source.len(),
@@ -29,11 +29,11 @@ impl IbtSource {
 
 #[cfg(test)]
 mod tests {
-    use super::IbtSource;
+    use super::Source;
 
     #[test]
     fn owned_reads_check_destination_and_available_bytes() {
-        let source = IbtSource::Owned(vec![1, 2, 3, 4]);
+        let source = Source::Owned(vec![1, 2, 3, 4]);
         assert_eq!(source.get(1..3), Some([2, 3].as_slice()));
         assert_eq!(source.get(3..5), None);
         assert_eq!(source.get(1..3), Some([2, 3].as_slice()));
@@ -45,8 +45,8 @@ mod tests {
         let mut mapping = memmap2::MmapMut::map_anon(bytes.len()).unwrap();
         mapping.copy_from_slice(&bytes);
         for source in [
-            IbtSource::Owned(bytes),
-            IbtSource::Mapped(mapping.make_read_only().unwrap()),
+            Source::Owned(bytes),
+            Source::Mapped(mapping.make_read_only().unwrap()),
         ] {
             assert_eq!(source.len(), 4);
             assert_eq!(source.get(0..4), Some([10, 20, 30, 40].as_slice()));
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn empty_owned_source_has_only_an_empty_range() {
-        let source = IbtSource::Owned(Vec::new());
+        let source = Source::Owned(Vec::new());
         assert_eq!(source.len(), 0);
         assert_eq!(source.get(0..0), Some([].as_slice()));
         assert_eq!(source.get(0..1), None);
