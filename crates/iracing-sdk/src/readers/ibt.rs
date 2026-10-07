@@ -6,7 +6,7 @@
 //! ## Usage Example
 //!
 //! ```rust,no_run
-//! use iracing_sdk::ibt::IbtReader;
+//! use iracing_sdk::readers::ibt::Reader as IbtReader;
 //!
 //! fn read_frames() -> iracing_sdk::Result<()> {
 //!     // Open IBT file

@@ -10,6 +10,7 @@ pub(crate) enum Source {
 }
 
 impl Source {
+    /// The length of the underlying source
     pub fn len(&self) -> usize {
         match self {
             Self::Mapped(source) => source.len(),
