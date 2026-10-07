@@ -19,10 +19,10 @@ struct Subscriber {
 async fn main() -> anyhow::Result<()> {
     use anyhow::{Context, anyhow};
     use futures::{StreamExt, stream::select_all};
+    use iracing_sdk::provider::VariableHeadersProvider;
     use iracing_sdk::{
         DynamicFrame, LiveConnection, SchemaProvider, UpdateRate, VariableSchema, WindowsConnection,
     };
-    use iracing_sdk::provider::VariableHeadersProvider;
     use serde_json::json;
     use std::time::Instant;
 
@@ -104,7 +104,8 @@ async fn main() -> anyhow::Result<()> {
 
         let current_header = monitor.header_snapshot()?;
         let current_headers = monitor.variable_headers()?;
-        let current_schema = VariableSchema::from_headers(&current_headers, run.scenario.frame_size)?;
+        let current_schema =
+            VariableSchema::from_headers(&current_headers, run.scenario.frame_size)?;
         let current_frame_size = usize::try_from(current_header.buffer_length).ok();
         if !monitor.is_connected()
             || live::fingerprint(&current_schema)? != initial_fingerprint

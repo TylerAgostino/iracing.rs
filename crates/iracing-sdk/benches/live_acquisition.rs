@@ -86,7 +86,9 @@ fn main() -> anyhow::Result<()> {
         }
 
         let current_header = connection.header_snapshot()?;
-        if current_header.buffer_length != header.buffer_length || current_header.tick_rate != tick_hz {
+        if current_header.buffer_length != header.buffer_length
+            || current_header.tick_rate != tick_hz
+        {
             failure = Some("frame geometry or source rate changed");
             break;
         }
