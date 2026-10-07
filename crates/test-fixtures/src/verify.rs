@@ -11,7 +11,8 @@ use anyhow::{Context, Result, bail, ensure};
 use futures::executor::block_on;
 use iracing_irsdk::{DiskSubHeader, Header, VariableHeader, VariableType, decode};
 use iracing_sdk::{
-    SchemaProvider, ibt::IbtReader, provider::Provider, providers::ibt::IbtProvider,
+    SchemaProvider, provider::Provider, providers::ibt::IbtProvider,
+    readers::ibt::Reader as IbtReader,
 };
 
 use crate::{VerificationReport, generate::hex_digest, model::FixtureManifest};

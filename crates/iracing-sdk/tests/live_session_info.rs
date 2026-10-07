@@ -1,13 +1,13 @@
 #![cfg(windows)]
 
 use iracing_sdk::{
-    provider::SessionInformationBytesProvider, schema::SessionInfo, windows::Connection,
+    provider::SessionInformationBytesProvider, readers::live::LiveReader, schema::SessionInfo,
 };
 
 #[test]
 #[ignore = "requires iRacing running in an active session"]
 fn parses_live_iracing_session_info() {
-    let connection = Connection::try_connect().expect("connect to running iRacing");
+    let connection = LiveReader::try_connect().expect("connect to running iRacing");
     let buffer = connection
         .session_info_snapshot()
         .expect("active session should expose a session buffer")

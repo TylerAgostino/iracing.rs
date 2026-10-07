@@ -11,9 +11,9 @@ use std::{
 
 use crate::{
     FramePacket, IRacingSDKError, IRacingSessionString, Result, SchemaProvider, VariableSchema,
-    WindowsConnection,
     provider::{Provider, SessionInformationBytesProvider, VariableHeadersProvider},
-    windows::WaitResult,
+    readers::live::LiveReader,
+    source::live::WaitResult,
 };
 
 const WAITING_LOG_INTERVAL: Duration = Duration::from_secs(10);
@@ -21,7 +21,7 @@ const WAITING_LOG_INTERVAL: Duration = Duration::from_secs(10);
 /// A [`Provider`] that streams telemetry frames from an iRacing mmap file.
 #[derive(Debug)]
 pub struct LiveProvider {
-    connection: WindowsConnection,
+    connection: LiveReader,
     schema: Arc<VariableSchema>,
     poll_interval: Duration,
     max_no_connection_attempts: Option<u32>,
@@ -56,7 +56,7 @@ impl LiveProvider {
     }
 
     fn from_parts(
-        connection: WindowsConnection,
+        connection: LiveReader,
         poll_interval: Duration,
         max_no_connection_attempts: Option<u32>,
     ) -> Result<Self> {

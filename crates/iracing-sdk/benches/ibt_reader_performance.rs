@@ -33,7 +33,8 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use futures::StreamExt;
 use iracing_sdk::{
-    DynamicFrame, IbtConnection, ibt::IbtReader, provider::Provider, providers::ibt::IbtProvider,
+    DynamicFrame, IbtConnection, provider::Provider, providers::ibt::IbtProvider,
+    readers::ibt::Reader as IbtReader,
 };
 use std::{hint::black_box, time::Duration, time::Instant};
 

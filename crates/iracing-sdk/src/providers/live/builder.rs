@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{IRacingSDKError, Result, WindowsConnection};
+use crate::{IRacingSDKError, Result, readers::live::LiveReader};
 
 use super::LiveProvider;
 
@@ -13,7 +13,7 @@ const DEFAULT_MAX_NO_CONNECTION_ATTEMPTS: u32 = 600;
 /// stream after 600 consecutive observations without an active iRacing session.
 #[derive(Debug)]
 pub struct LiveProviderBuilder {
-    pub(super) connection: Option<WindowsConnection>,
+    pub(super) connection: Option<LiveReader>,
     pub(super) poll_interval: Duration,
     pub(super) max_no_connection_attempts: Option<u32>,
 }
@@ -30,7 +30,7 @@ impl Default for LiveProviderBuilder {
 
 impl LiveProviderBuilder {
     /// Use an already-established Windows shared-memory connection.
-    pub fn with_connection(mut self, connection: WindowsConnection) -> Self {
+    pub fn with_connection(mut self, connection: LiveReader) -> Self {
         self.connection = Some(connection);
         self
     }
@@ -81,7 +81,7 @@ impl LiveProviderBuilder {
 
         let connection = match self.connection {
             Some(connection) => connection,
-            None => WindowsConnection::try_connect()?,
+            None => LiveReader::try_connect()?,
         };
 
         LiveProvider::from_parts(

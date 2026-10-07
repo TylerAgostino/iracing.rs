@@ -43,7 +43,9 @@ async fn main() -> Result<()> {
     {
         use anyhow::Context;
         use futures::StreamExt;
-        use iracing_sdk::{LiveConnection, WindowsConnection, providers::live::LiveProvider};
+        use iracing_sdk::{
+            LiveConnection, providers::live::LiveProvider, readers::live::LiveReader,
+        };
         use std::{fs, thread, time::Duration};
 
         let Args {
@@ -58,7 +60,7 @@ async fn main() -> Result<()> {
         }
 
         let windows_connection = loop {
-            match WindowsConnection::try_connect() {
+            match LiveReader::try_connect() {
                 Ok(connection) if connection.is_connected() => break connection,
                 Ok(_) => {
                     tracing::debug!("Shared memory opened but telemetry is not connected yet");

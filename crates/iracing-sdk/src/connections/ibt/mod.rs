@@ -160,8 +160,10 @@ impl Drop for IbtConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::require_smallest_ibt_fixture;
-    use crate::{DynamicFrame, IRacingSDKError};
+    use crate::{
+        DynamicFrame, IRacingSDKError, readers::ibt::Reader as IbtReader,
+        test_utils::require_smallest_ibt_fixture,
+    };
     use futures::StreamExt;
     use std::{
         collections::HashMap,
@@ -174,7 +176,7 @@ mod tests {
         let path = require_smallest_ibt_fixture()
             .expect("generated IBT fixture should be available for connection tests");
         let mut data = std::fs::read(path).expect("fixture should be readable");
-        let reader = crate::ibt::IbtReader::from_bytes(data.clone())?;
+        let reader = IbtReader::from_bytes(data.clone())?;
         assert!(frame_count <= reader.layout().frame_count());
 
         let frames_to_remove = reader.layout().frame_count() - frame_count;
@@ -298,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn one_frame_is_delivered_after_start() -> Result<()> {
-        let reader = crate::ibt::IbtReader::from_bytes(fixture_with_frame_count(1)?)?;
+        let reader = IbtReader::from_bytes(fixture_with_frame_count(1)?)?;
         let provider = IbtProvider::from_reader(reader)?;
         let connection = IbtConnection::from_provider(provider).await?;
 
@@ -314,7 +316,7 @@ mod tests {
 
     #[tokio::test]
     async fn eof_before_first_frame_returns_promptly() -> Result<()> {
-        let reader = crate::ibt::IbtReader::from_bytes(fixture_with_frame_count(0)?)?;
+        let reader = IbtReader::from_bytes(fixture_with_frame_count(0)?)?;
         let provider = IbtProvider::from_reader(reader)?;
         let started_at = Instant::now();
 

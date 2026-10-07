@@ -1,13 +1,13 @@
 use std::path::Path;
 
 use anyhow::Result;
+use iracing_sdk::readers::ibt::Reader as IbtReader;
 #[cfg(windows)]
-use iracing_sdk::WindowsConnection;
-use iracing_sdk::ibt::IbtReader;
+use iracing_sdk::readers::live::LiveReader;
 
 #[cfg(windows)]
-pub(crate) fn get_connection() -> Result<WindowsConnection> {
-    let connection = match WindowsConnection::try_connect() {
+pub(crate) fn get_connection() -> Result<LiveReader> {
+    let connection = match LiveReader::try_connect() {
         Ok(c) if c.is_connected() => c,
         Ok(_) => {
             return Err(anyhow::anyhow!(

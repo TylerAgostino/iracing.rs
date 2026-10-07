@@ -3,8 +3,8 @@
 use iracing_sdk::provider::VariableHeadersProvider;
 use iracing_sdk::{
     IbtLayout,
-    ibt::IbtReader,
     irsdk::{DiskSubHeader, Header},
+    readers::ibt::Reader as IbtReader,
     test_utils::require_smallest_ibt_fixture,
 };
 use zerocopy::IntoBytes;

@@ -18,7 +18,7 @@
 //! machine load; compare results only on the same machine and revision.
 
 use anyhow::{Context, Result, ensure};
-use iracing_sdk::ibt::IbtReader;
+use iracing_sdk::readers::ibt::Reader as IbtReader;
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     fs,

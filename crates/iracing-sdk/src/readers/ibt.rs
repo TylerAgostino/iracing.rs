@@ -31,7 +31,7 @@
 use crate::{
     IRacingSDKError, IbtLayout, Result, SessionInfoBytes, VariableHeaders,
     provider::{SessionInformationBytesProvider, VariableHeadersProvider},
-    source::ibt::IbtSource;
+    source::ibt::Source as IbtSource,
 };
 use memmap2::Mmap;
 use std::{fs::File, path::Path};
@@ -44,14 +44,14 @@ use iracing_irsdk::{DiskSubHeader, Header, IbtHeader};
 ///
 /// Geometry uses `usize`: sources larger than `usize::MAX` bytes are rejected
 /// (including files of 4 GiB or more on 32-bit targets).
-pub struct IbtReader {
+pub struct Reader {
     source: IbtSource,
 
     header: IbtHeader,
     layout: IbtLayout,
 }
 
-impl IbtReader {
+impl Reader {
     /// Open and parse an immutable `.ibt` recording using a read-only memory map.
     ///
     /// The file must not be modified or truncated by any process while this reader
@@ -192,7 +192,7 @@ impl IbtReader {
     }
 }
 
-impl SessionInformationBytesProvider for IbtReader {
+impl SessionInformationBytesProvider for Reader {
     fn session_info_snapshot(&self) -> Result<Option<SessionInfoBytes>> {
         let Some(region) = self.layout.metadata().session_info() else {
             return Ok(None);
@@ -213,7 +213,7 @@ impl SessionInformationBytesProvider for IbtReader {
     }
 }
 
-impl VariableHeadersProvider for IbtReader {
+impl VariableHeadersProvider for Reader {
     fn variable_headers(&self) -> Result<VariableHeaders> {
         let Some(region) = self.layout.metadata().variable_headers() else {
             return Ok(VariableHeaders::default());
@@ -234,7 +234,7 @@ impl VariableHeadersProvider for IbtReader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{Reader as IbtReader, *};
     use crate::test_utils::require_smallest_ibt_fixture;
     use anyhow::{Context, Result};
 

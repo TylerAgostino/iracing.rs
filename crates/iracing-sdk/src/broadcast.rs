@@ -5,6 +5,8 @@ use iracing_broadcast_sdk::{Client, Command};
 
 use crate::{IRacingSDKError, Result};
 
+pub type BroadcastCommand = Command;
+
 /// Client for sending iRacing broadcast commands over the Win32 broadcast channel.
 #[derive(Debug)]
 pub struct Broadcast {

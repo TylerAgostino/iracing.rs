@@ -58,10 +58,12 @@
 //! - `benchmark`: enables benchmark targets.
 //!
 pub mod adapters;
+pub mod broadcast;
 mod error;
 pub mod irsdk;
 mod parse_utils;
-mod source;
+pub mod readers;
+pub mod source;
 pub mod test_utils;
 pub mod types;
 
@@ -76,8 +78,6 @@ pub mod telemetry;
 #[doc(hidden)]
 pub mod benchmarking;
 
-// Data source modules
-pub mod ibt;
 pub mod schema;
 
 // Core exports
@@ -95,16 +95,6 @@ pub mod __private {
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use iracing_sdk_derive::*;
-
-// Platform-specific modules
-#[cfg(windows)]
-#[cfg_attr(docsrs, doc(cfg(windows)))]
-pub mod windows;
-
-// Windows memory exports
-#[cfg(windows)]
-#[cfg_attr(docsrs, doc(cfg(windows)))]
-pub use windows::{Broadcast, BroadcastCommand, Connection as WindowsConnection};
 
 // Main API exports
 pub use connections::ibt::IbtConnection;

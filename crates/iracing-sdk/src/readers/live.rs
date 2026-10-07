@@ -5,21 +5,21 @@
 
 use iracing_irsdk::{StatusField, VariableBuffer};
 
-use super::source::WaitResult;
 use crate::provider::{SessionInformationBytesProvider, VariableHeadersProvider};
 use crate::{ByteRegion, FrameRegion};
 use crate::{
     IRacingSDKError, Result, SessionInfoBytes, SessionInfoRegion, VariableHeaders,
-    VariableHeadersRegion, windows::source::LiveSource,
+    VariableHeadersRegion,
+    source::live::{Source as LiveSource, WaitResult},
 };
 use std::mem::offset_of;
 use std::time::Duration;
 
 use iracing_irsdk::Header;
 
-/// Direct connection to iRacing shared memory
+/// Reads data from a `LiveSource`
 #[derive(Debug)]
-pub struct Connection {
+pub struct LiveReader {
     source: LiveSource,
 
     last_tick_count: i32,
@@ -37,7 +37,7 @@ pub struct LiveFrameSnapshot {
     pub session_info_update: i32,
 }
 
-impl Connection {
+impl LiveReader {
     /// Attempt to connect to iRacing shared memory
     ///
     /// # Errors
@@ -293,7 +293,7 @@ impl Connection {
     }
 }
 
-impl SessionInformationBytesProvider for Connection {
+impl SessionInformationBytesProvider for LiveReader {
     fn session_info_snapshot(&self) -> Result<Option<SessionInfoBytes>> {
         let header = self.header_snapshot()?;
 
@@ -312,7 +312,7 @@ impl SessionInformationBytesProvider for Connection {
     }
 }
 
-impl VariableHeadersProvider for Connection {
+impl VariableHeadersProvider for LiveReader {
     fn variable_headers(&self) -> Result<VariableHeaders> {
         let header = self.header_snapshot()?;
         let Some(region) = VariableHeadersRegion::try_from_header(&header)? else {
@@ -332,8 +332,8 @@ impl VariableHeadersProvider for Connection {
 
 // SAFETY: The Connection struct only holds Windows handles and a memory pointer
 // that are safe to send between threads for our read-only use case
-unsafe impl Send for Connection {}
-unsafe impl Sync for Connection {}
+unsafe impl Send for LiveReader {}
+unsafe impl Sync for LiveReader {}
 
 #[cfg(all(test, windows))]
 mod tests {
@@ -364,17 +364,17 @@ mod tests {
         )
     }
 
-    fn connection_with_header(header: Header, len: usize) -> Connection {
+    fn connection_with_header(header: Header, len: usize) -> LiveReader {
         let mut bytes = vec![0; len];
         bytes[..size_of::<Header>()].copy_from_slice(header.as_bytes());
         bytes[264..268].copy_from_slice(&[1, 2, 3, 4]);
-        Connection::from_source(LiveSource::test_source(&bytes)).unwrap()
+        LiveReader::from_source(LiveSource::test_source(&bytes)).unwrap()
     }
 
     #[test]
     fn activation_rejects_truncated_headers() {
         for len in [1, offset_of!(Header, tick_rate), size_of::<Header>() - 1] {
-            assert!(Connection::from_source(LiveSource::test_source(&vec![0; len])).is_err());
+            assert!(LiveReader::from_source(LiveSource::test_source(&vec![0; len])).is_err());
         }
     }
 
@@ -544,7 +544,7 @@ mod tests {
     fn current_buffer_selection_uses_published_index_instead_of_highest_tick() {
         let header = test_header(4);
         assert_eq!(
-            Connection::current_buffer_index(header.current_buffer, header.buffer_count),
+            LiveReader::current_buffer_index(header.current_buffer, header.buffer_count),
             2
         );
     }
@@ -552,14 +552,14 @@ mod tests {
     #[test]
     fn current_buffer_selection_falls_back_to_zero_for_invalid_indices() {
         for (index, count) in [(4, 4), (255, 4), (2, 2), (2, 0), (2, -1), (4, 5)] {
-            assert_eq!(Connection::current_buffer_index(index, count), 0);
+            assert_eq!(LiveReader::current_buffer_index(index, count), 0);
         }
     }
 
     #[test]
     #[ignore = "iracing_required"]
     fn connects_to_live_iracing() {
-        let connection = Connection::try_connect().expect("Failed to connect to iRacing");
+        let connection = LiveReader::try_connect().expect("Failed to connect to iRacing");
         let header = connection.header_snapshot().unwrap();
 
         // Validate header structure sizes match expected C SDK layout
@@ -579,7 +579,7 @@ mod tests {
     #[test]
     #[ignore = "iracing_required"]
     fn waits_for_data_updates() {
-        let mut connection = Connection::try_connect().expect("Failed to connect to iRacing");
+        let mut connection = LiveReader::try_connect().expect("Failed to connect to iRacing");
 
         // Try to get new data - may or may not have data immediately
         let _data = connection.get_new_data();

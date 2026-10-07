@@ -4,8 +4,8 @@ use std::{path::Path, sync::Arc};
 
 use crate::{
     FramePacket, IRacingSDKError, Result, SchemaProvider, VariableSchema,
-    ibt::IbtReader,
     provider::{Provider, VariableHeadersProvider},
+    readers::ibt::Reader as IbtReader,
     types::IRacingSessionString,
 };
 

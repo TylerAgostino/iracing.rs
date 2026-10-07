@@ -2,7 +2,7 @@ use anyhow::Result;
 #[cfg(windows)]
 use clap::Parser;
 #[cfg(windows)]
-use iracing_sdk::WindowsConnection;
+use iracing_sdk::readers::live::LiveReader;
 #[cfg(windows)]
 use iracing_simulation::{Simulation, is_iracing_process_running};
 #[cfg(windows)]
@@ -119,7 +119,7 @@ fn monitor_telemetry(simulation: &Simulation, poll_interval: Duration, telemetry
         }
 
         // Attempt to connect
-        match WindowsConnection::try_connect() {
+        match LiveReader::try_connect() {
             Ok(connection) => {
                 // If not connected, try again
                 if !connection.is_connected() {
@@ -142,11 +142,11 @@ fn monitor_telemetry(simulation: &Simulation, poll_interval: Duration, telemetry
 #[cfg(windows)]
 fn monitor_connected_session(
     simulation: &Simulation,
-    connection: WindowsConnection,
+    connection: LiveReader,
     poll_interval: Duration,
     telemetry_wait: Duration,
 ) {
-    use iracing_sdk::windows::WaitResult;
+    use iracing_sdk::source::live::WaitResult;
 
     tracing::info!("Monitoring live telemetry session");
 
