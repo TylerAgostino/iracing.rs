@@ -39,12 +39,6 @@ impl IbtProvider {
         let frame_size = reader.frame_size();
 
         let headers = reader.variable_headers()?;
-        if headers.is_empty() && reader.frame_count() > 0 {
-            return Err(IRacingSDKError::parse_error(
-                "IBT replay schema",
-                "Telemetry frames require variable-header metadata",
-            ));
-        }
         let schema = VariableSchema::from_headers(&headers, frame_size)?;
 
         let tick_rate = if reader.header().tick_rate > 0 {
