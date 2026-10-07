@@ -21,6 +21,7 @@ pub struct ByteRegion<S = Unchecked> {
 }
 
 impl ByteRegion<Unchecked> {
+    /// Creates a new, unchecked region
     pub fn new(offset: usize, length: usize) -> Result<Self> {
         offset.checked_add(length).ok_or_else(|| {
             IRacingSDKError::parse_error(
@@ -36,6 +37,7 @@ impl ByteRegion<Unchecked> {
         })
     }
 
+    /// Creates a checked region against a source length
     pub fn checked(offset: usize, length: usize, source_len: usize) -> Result<ByteRegion<Checked>> {
         let end = offset.checked_add(length).ok_or_else(|| {
             IRacingSDKError::parse_error(
@@ -58,6 +60,7 @@ impl ByteRegion<Unchecked> {
         })
     }
 
+    /// Checks a region against a source length
     pub fn check(self, source_len: usize) -> Result<ByteRegion<Checked>> {
         if self.end() > source_len {
             return Err(IRacingSDKError::parse_error(
@@ -173,7 +176,6 @@ impl From<ByteRegion<Checked>> for Range<usize> {
     }
 }
 
-pub type CheckedByteRegion = ByteRegion<Checked>;
 pub type UncheckedByteRegion = ByteRegion<Unchecked>;
 
 #[cfg(test)]

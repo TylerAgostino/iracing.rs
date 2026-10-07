@@ -18,9 +18,11 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// The size of an IBT layout premable
     pub const PREAMBLE_SIZE: usize =
         size_of::<iracing_irsdk::Header>() + size_of::<iracing_irsdk::DiskSubHeader>();
 
+    /// The range of the preamble
     pub const fn preamble_range() -> Range<usize> {
         0..Self::PREAMBLE_SIZE
     }
@@ -40,15 +42,8 @@ impl Layout {
         Self::try_from_headers(header, disk)
     }
 
+    /// Non-checked constructor
     pub fn try_from_headers(header: Header, disk: DiskSubHeader) -> Result<Self> {
-        Self::try_from_parts(header, disk, None)
-    }
-
-    fn try_from_parts(
-        header: Header,
-        disk: DiskSubHeader,
-        source_len: Option<usize>,
-    ) -> Result<Self> {
         let session_info = SessionInfoRegion::try_from_header(&header)?;
         let variable_headers = VariableHeadersRegion::try_from_header(&header)?;
 
@@ -77,16 +72,6 @@ impl Layout {
 
         let frame_region = FramesRegion::new(metadata_end, buffer_length, variable_count)?;
 
-        if let Some(len) = source_len {
-            // Frame data start and end is within bounds
-            if frame_region.start() > len || frame_region.end() > len {
-                return Err(IRacingSDKError::parse_error(
-                    "IbtLayout::try_from_parts",
-                    "Frame data is out of range",
-                ));
-            }
-        }
-
         if disk.record_count > 0
             && frame_region.frame_count() > 0
             && usize::try_from(disk.record_count).ok() != Some(frame_region.frame_count())
@@ -107,26 +92,32 @@ impl Layout {
         })
     }
 
+    /// The borrowed header
     pub fn header(&self) -> &Header {
         &self.header
     }
 
+    /// The borrowed disk header
     pub fn disk_header(&self) -> &DiskSubHeader {
         &self.disk
     }
 
+    /// The number of frames reported by the frames region
     pub fn frame_count(&self) -> usize {
         self.frames.frame_count()
     }
 
+    /// The frame size reported by the frames region
     pub fn frame_size(&self) -> usize {
         self.frames.frame_size()
     }
 
+    /// The session info region
     pub fn session_info(&self) -> Option<&SessionInfoRegion> {
         self.session_info.as_ref()
     }
 
+    /// The variable headers region
     pub fn variable_headers(&self) -> Option<&VariableHeadersRegion> {
         self.variable_headers.as_ref()
     }
