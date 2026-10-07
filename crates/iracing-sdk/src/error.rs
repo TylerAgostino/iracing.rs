@@ -175,10 +175,7 @@ impl<T: zerocopy::TryFromBytes + zerocopy::KnownLayout + ?Sized>
     From<zerocopy::error::SizeError<&[u8], T>> for IRacingSDKError
 {
     fn from(value: zerocopy::error::SizeError<&[u8], T>) -> Self {
-        IRacingSDKError::Parse {
-            context: "Something".to_string(),
-            details: "probably bad".to_string(),
-        }
+        Self::parse_error(std::any::type_name::<T>(), value.to_string())
     }
 }
 
