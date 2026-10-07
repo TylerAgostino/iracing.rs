@@ -171,6 +171,17 @@ impl<T: zerocopy::TryFromBytes + zerocopy::KnownLayout + ?Sized>
     }
 }
 
+impl<T: zerocopy::TryFromBytes + zerocopy::KnownLayout + ?Sized>
+    From<zerocopy::error::SizeError<&[u8], T>> for IRacingSDKError
+{
+    fn from(value: zerocopy::error::SizeError<&[u8], T>) -> Self {
+        IRacingSDKError::Parse {
+            context: "Something".to_string(),
+            details: "probably bad".to_string(),
+        }
+    }
+}
+
 impl IRacingSDKError {
     /// Returns whether this error is potentially recoverable through retry.
     pub fn is_retryable(&self) -> bool {

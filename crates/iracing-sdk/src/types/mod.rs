@@ -47,7 +47,6 @@
 
 mod dynamic_frame;
 mod frame;
-mod ibt;
 mod iracing_session_string;
 mod regions;
 mod schema;
@@ -60,7 +59,6 @@ mod variable_headers;
 // Re-export all public types
 pub use dynamic_frame::DynamicFrame;
 pub use frame::FramePacket;
-pub use ibt::IbtLayout;
 pub use iracing_irsdk::BitField;
 pub(crate) use iracing_session_string::IRacingSessionString;
 pub use regions::*;

@@ -1,7 +1,7 @@
 use iracing_irsdk::{Header, VariableHeader};
 
 use super::ByteRegion;
-use crate::{IRacingSDKError, Result, types::ibt::ParsedIbtHeader};
+use crate::{IRacingSDKError, Result, types::regions::bytes::UncheckedByteRegion};
 
 /// Location and size of the variable-header region advertised by a [`Header`].
 ///
@@ -19,24 +19,6 @@ pub struct VariableHeadersRegion {
 }
 
 impl VariableHeadersRegion {
-    /// Derives the variable-header region from a parsed IBT header.
-    ///
-    /// Returns `Ok(None)` when the parsed header advertises zero variable
-    /// headers. Source bounds are not checked; callers that have a complete
-    /// source should compare [`Self::end`] with its length before slicing.
-    ///
-    /// # Errors
-    ///
-    /// Returns a parse error if the region-size calculation overflows.
-    pub(crate) fn try_from_parsed_header(header: &ParsedIbtHeader) -> Result<Option<Self>> {
-        let region = Self::from_parts(header.variable_header_offset(), header.variable_count())?;
-        if region.count == 0 {
-            return Ok(None);
-        }
-
-        Ok(Some(region))
-    }
-
     /// Derives the variable-header region advertised by an SDK header.
     ///
     /// Returns `Ok(None)` when the header advertises zero variable headers.
@@ -84,7 +66,7 @@ impl VariableHeadersRegion {
             })?;
 
         Ok(Self {
-            region: ByteRegion::new(offset, length)?,
+            region: UncheckedByteRegion::new(offset, length)?,
             count,
         })
     }
@@ -120,7 +102,7 @@ impl VariableHeadersRegion {
     }
 
     /// Returns whether each region begins before the other region ends.
-    pub fn overlaps(&self, other: ByteRegion) -> bool {
+    pub fn overlaps(&self, other: &ByteRegion) -> bool {
         self.region.overlaps(other)
     }
 }

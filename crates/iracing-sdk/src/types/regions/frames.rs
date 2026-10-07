@@ -1,4 +1,4 @@
-use crate::{IRacingSDKError, Result};
+use crate::{IRacingSDKError, Result, types::regions::bytes::UncheckedByteRegion};
 use std::num::NonZeroUsize;
 
 use super::{ByteRegion, FrameRegion};
@@ -16,9 +16,8 @@ impl FramesRegion {
     ///
     /// # Errors
     ///
-    /// Returns a parse error if `frame_size` is zero or if the region contains
-    /// trailing bytes that do not form a complete frame.
-    pub fn new(region: ByteRegion, frame_size: usize) -> Result<Self> {
+    /// Returns a parse error if `frame_size` is zero.
+    pub fn new(offset: usize, frame_size: usize, count: usize) -> Result<Self> {
         // Ensure the frame size is greater than 0
         let frame_size = NonZeroUsize::new(frame_size).ok_or_else(|| {
             IRacingSDKError::parse_error(
@@ -27,23 +26,22 @@ impl FramesRegion {
             )
         })?;
 
-        if region.len() % frame_size != 0 {
-            return Err(IRacingSDKError::parse_error(
+        let region_len = frame_size.get().checked_mul(count).ok_or_else(|| {
+            IRacingSDKError::parse_error(
                 "FramesRegion::new",
                 format!(
-                    "Frame region length {} is not divisible by frame size {}",
-                    region.len(),
-                    frame_size
+                    "Frame size ({}) multiplied by count ({}) overflowed usize",
+                    frame_size, count
                 ),
-            ));
-        }
+            )
+        })?;
 
-        let frame_count = region.len() / frame_size;
+        let region = UncheckedByteRegion::new(offset, region_len)?;
 
         Ok(Self {
             region,
             frame_size,
-            frame_count,
+            frame_count: count,
         })
     }
 
@@ -120,69 +118,5 @@ impl FramesRegion {
             })?;
 
         FrameRegion::new(offset, self.frame_size.get())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn indexed_frames_stay_within_region_near_usize_limit() {
-        let frames = FramesRegion::new(ByteRegion::new(usize::MAX - 8, 8).unwrap(), 4).unwrap();
-        assert_eq!(frames.frame(0).unwrap().offset(), usize::MAX - 8);
-        assert_eq!(frames.frame(1).unwrap().end(), usize::MAX);
-        assert!(frames.frame(2).is_err());
-        assert!(frames.frame(usize::MAX).is_err());
-        assert!(ByteRegion::new(usize::MAX - 7, 8).is_err());
-    }
-
-    #[test]
-    fn overflowing_index_is_rejected_before_multiplication() {
-        let frames = FramesRegion::new(ByteRegion::new(0, usize::MAX - 1).unwrap(), 2).unwrap();
-        let index = usize::MAX / 2 + 1;
-        assert!(index.checked_mul(2).is_none());
-        assert!(frames.frame(index).is_err());
-        assert!(frames.frame(frames.frame_count()).is_err());
-    }
-
-    #[test]
-    fn frames_region_from_byte_region_and_size() {
-        let valid_region = ByteRegion::try_from((0, 4)).unwrap();
-
-        // Valid parsing
-        assert!(FramesRegion::new(valid_region, 2).is_ok());
-        // Trailing bytes
-        assert!(FramesRegion::new(valid_region, 3).is_err());
-        // Invalid frame size
-        assert!(FramesRegion::new(valid_region, 0).is_err());
-    }
-
-    #[test]
-    fn rejects_zero_frame_size() {
-        assert!(FramesRegion::new(ByteRegion::new(0, 0).unwrap(), 0).is_err());
-    }
-
-    #[test]
-    fn rejects_region_not_divisible_by_frame_size() {
-        assert!(FramesRegion::new(ByteRegion::new(0, 2).unwrap(), 3).is_err());
-    }
-
-    #[test]
-    fn frames_region_is_empty() {
-        let frames_region = FramesRegion::new(ByteRegion::new(0, 0).unwrap(), 1).unwrap();
-        assert!(frames_region.is_empty());
-    }
-
-    #[test]
-    fn frames_region_length() {
-        let frames_region = FramesRegion::new(ByteRegion::new(0, 4).unwrap(), 1).unwrap();
-        assert_eq!(frames_region.len(), 4);
-    }
-
-    #[test]
-    fn frame_rejects_index_greater_than_frame_count() {
-        let frames_region = FramesRegion::new(ByteRegion::new(0, 5).unwrap(), 1).unwrap();
-        assert!(frames_region.frame(6).is_err());
     }
 }

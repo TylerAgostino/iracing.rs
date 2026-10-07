@@ -1,5 +1,5 @@
 use super::ByteRegion;
-use crate::{IRacingSDKError, Result, irsdk::Header, types::ibt::ParsedIbtHeader};
+use crate::{IRacingSDKError, Result, irsdk::Header, types::regions::bytes::UncheckedByteRegion};
 
 /// Location and size of the session-information bytes advertised by an SDK header.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -8,20 +8,6 @@ pub struct SessionInfoRegion {
 }
 
 impl SessionInfoRegion {
-    /// Derives the session-information region from a parsed IBT header.
-    ///
-    /// Returns `Ok(None)` when the parsed header advertises a zero-length
-    /// region. Source bounds are not checked; callers that have a complete
-    /// source should compare [`Self::end`] with its length before slicing.
-    ///
-    /// # Errors
-    ///
-    /// Returns a parse error if the advertised offset plus length overflows
-    /// `usize`.
-    pub(crate) fn try_from_parsed_header(header: &ParsedIbtHeader) -> Result<Option<Self>> {
-        Self::from_parts(header.session_info_offset(), header.session_info_length())
-    }
-
     /// Derives the session-information region advertised by an SDK header.
     ///
     /// Returns `Ok(None)` when the header advertises a zero-length region.
@@ -56,7 +42,7 @@ impl SessionInfoRegion {
         }
 
         Ok(Some(Self {
-            region: ByteRegion::new(offset, length)?,
+            region: UncheckedByteRegion::new(offset, length)?,
         }))
     }
 
@@ -86,7 +72,7 @@ impl SessionInfoRegion {
     }
 
     /// Returns whether each region begins before the other region ends.
-    pub fn overlaps(&self, other: ByteRegion) -> bool {
+    pub fn overlaps(&self, other: &ByteRegion) -> bool {
         self.region.overlaps(other)
     }
 }

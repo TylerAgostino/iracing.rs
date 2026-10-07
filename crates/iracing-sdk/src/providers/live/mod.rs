@@ -23,6 +23,7 @@ const WAITING_LOG_INTERVAL: Duration = Duration::from_secs(10);
 pub struct LiveProvider {
     connection: LiveReader,
     schema: Arc<VariableSchema>,
+    /// The length of time to wait between polled connections to the SDK
     poll_interval: Duration,
     max_no_connection_attempts: Option<u32>,
 }

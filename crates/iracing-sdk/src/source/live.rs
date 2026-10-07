@@ -1,3 +1,5 @@
+//! A live connection to iRacing.
+
 use iracing_irsdk::constants::{IRSDK_DATAVALIDEVENTNAME, IRSDK_MEMMAPFILENAME};
 use std::{ptr::NonNull, sync::Arc, time::Duration};
 use widestring::U16CString;
@@ -152,6 +154,7 @@ impl Source {
         }
     }
 
+    /// Attempt to connect to the known iRacing shared memory map file and subscribe to new events.
     pub fn try_connect() -> Result<Self> {
         let name = U16CString::from_str(IRSDK_MEMMAPFILENAME)?;
 

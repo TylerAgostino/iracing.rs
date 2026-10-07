@@ -29,14 +29,15 @@
 //! - Indexed frame geometry is O(1)
 
 use crate::{
-    IRacingSDKError, IbtLayout, Result, SessionInfoBytes, VariableHeaders,
+    IRacingSDKError, Result, SessionInfoBytes, VariableHeaders,
+    layout::ibt::Layout as IbtLayout,
     provider::{SessionInformationBytesProvider, VariableHeadersProvider},
     source::ibt::Source as IbtSource,
 };
 use memmap2::Mmap;
 use std::{fs::File, path::Path};
 
-use iracing_irsdk::{DiskSubHeader, Header, IbtHeader};
+use iracing_irsdk::{DiskSubHeader, Header};
 
 /// Low-level IBT reader for indexed frames and fresh metadata snapshots.
 ///
@@ -46,8 +47,6 @@ use iracing_irsdk::{DiskSubHeader, Header, IbtHeader};
 /// (including files of 4 GiB or more on 32-bit targets).
 pub struct Reader {
     source: IbtSource,
-
-    header: IbtHeader,
     layout: IbtLayout,
 }
 
@@ -81,42 +80,16 @@ impl Reader {
     }
 
     fn from_source(source: IbtSource) -> Result<Self> {
-        let source_len = source.len();
-        let preamble_len = size_of::<Header>() + size_of::<DiskSubHeader>();
-        let Some(bytes) = source.get(0..preamble_len) else {
+        let Some(bytes) = source.get(0..IbtLayout::PREAMBLE_SIZE) else {
             return Err(IRacingSDKError::parse_error(
                 "IbtReader::from_source",
                 "Source is shorter than the IBT preamble",
             ));
         };
 
-        let ibt_header = IbtHeader::try_from_bytes(bytes).map_err(|_| {
-            IRacingSDKError::parse_error(
-                "IbtReader::from_source",
-                "Could not parse IBT header from source",
-            )
-        })?;
+        let layout = IbtLayout::try_from_bytes(bytes)?;
 
-        let layout = IbtLayout::try_from_headers(ibt_header.header(), source_len)?;
-
-        let disk_header = ibt_header.disk_header();
-        // Record counts are advisory; only the layout determines EOF.
-        if disk_header.record_count > 0
-            && layout.frame_count() > 0
-            && usize::try_from(disk_header.record_count).ok() != Some(layout.frame_count())
-        {
-            tracing::warn!(
-                "Frame count mismatch: disk header reports {} records, calculated {} frames from file size",
-                disk_header.record_count,
-                layout.frame_count()
-            );
-        }
-
-        Ok(Self {
-            source,
-            header: ibt_header,
-            layout,
-        })
+        Ok(Self { source, layout })
     }
 
     /// Returns the canonical physical layout of this source.
@@ -146,7 +119,7 @@ impl Reader {
         note = "use iracing_sdk::provider::VariableHeadersProvider::variable_headers; absent metadata returns an empty snapshot"
     )]
     pub fn variable_headers_snapshot(&mut self) -> Result<Option<VariableHeaders>> {
-        if self.layout.metadata().variable_headers().is_none() {
+        if self.layout.variable_headers().is_none() {
             return Ok(None);
         }
 
@@ -173,12 +146,12 @@ impl Reader {
 
     /// Get disk metadata from the disk sub-header
     pub fn disk_header(&self) -> &DiskSubHeader {
-        self.header.disk_header()
+        self.layout.disk_header()
     }
 
     /// Get the IBT header information
     pub fn header(&self) -> &Header {
-        self.header.header()
+        self.layout.header()
     }
 
     /// The size of an individual frame.
@@ -194,7 +167,7 @@ impl Reader {
 
 impl SessionInformationBytesProvider for Reader {
     fn session_info_snapshot(&self) -> Result<Option<SessionInfoBytes>> {
-        let Some(region) = self.layout.metadata().session_info() else {
+        let Some(region) = self.layout.session_info() else {
             return Ok(None);
         };
 
@@ -215,7 +188,7 @@ impl SessionInformationBytesProvider for Reader {
 
 impl VariableHeadersProvider for Reader {
     fn variable_headers(&self) -> Result<VariableHeaders> {
-        let Some(region) = self.layout.metadata().variable_headers() else {
+        let Some(region) = self.layout.variable_headers() else {
             return Ok(VariableHeaders::default());
         };
 
@@ -307,15 +280,12 @@ mod tests {
             file.disk_header().as_bytes(),
             owned.disk_header().as_bytes()
         );
+        assert_eq!(file.layout().session_info(), owned.layout().session_info());
         assert_eq!(
-            file.layout().metadata().session_info(),
-            owned.layout().metadata().session_info()
+            file.layout().variable_headers(),
+            owned.layout().variable_headers()
         );
-        assert_eq!(
-            file.layout().metadata().variable_headers(),
-            owned.layout().metadata().variable_headers()
-        );
-        assert_eq!(file.layout().frames(), owned.layout().frames());
+
         Ok(())
     }
 

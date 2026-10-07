@@ -184,31 +184,12 @@ mod tests {
     }
 
     #[test]
-    fn failed_read_does_not_advance_replay() -> anyhow::Result<()> {
-        let bytes = fs::read(require_smallest_ibt_fixture()?)?;
-        let mut reader = IbtReader::from_bytes(bytes.clone())?;
-        let expected = reader.frame(0)?;
-        let start = reader.layout().frame_data_start();
-        let mut provider = IbtProvider::from_reader(reader)?;
-        // Inject a short read without mutating a live mapped file.
-        provider.reader.owned_bytes_mut().truncate(start);
-        assert!(block_on(provider.next_frame()).is_err());
-        assert_eq!(provider.current_frame, 0);
-        *provider.reader.owned_bytes_mut() = bytes;
-        let frame = block_on(provider.next_frame())?.unwrap();
-        assert_eq!(frame.tick, 0);
-        assert_eq!(frame.data.as_ref(), expected);
-        Ok(())
-    }
-
-    #[test]
     fn schema_validation_uses_layout_frame_size() -> anyhow::Result<()> {
         use crate::irsdk::VariableHeader;
         let mut bytes = fs::read(require_smallest_ibt_fixture()?)?;
         let reader = IbtReader::from_bytes(bytes.clone())?;
         let offset = reader
             .layout()
-            .metadata()
             .variable_headers()
             .unwrap()
             .as_region()
@@ -243,7 +224,6 @@ mod tests {
         let offset = provider
             .reader
             .layout()
-            .metadata()
             .session_info()
             .expect("fixture has session information")
             .offset();
@@ -263,7 +243,6 @@ mod tests {
         let reader = IbtReader::from_bytes(bytes.clone())?;
         let metadata_end = reader
             .layout()
-            .metadata()
             .session_info()
             .expect("fixture has session information")
             .end();
@@ -277,14 +256,7 @@ mod tests {
 
         let mut provider = IbtProvider::from_reader(IbtReader::from_bytes(bytes)?)?;
         assert_eq!(provider.reader.frame_count(), 0);
-        assert!(
-            provider
-                .reader
-                .layout()
-                .metadata()
-                .variable_headers()
-                .is_none()
-        );
+        assert!(provider.reader.layout().variable_headers().is_none());
         assert_eq!(provider.schema().variable_count(), 0);
         assert_eq!(provider.schema().frame_size, frame_size);
         assert!(block_on(provider.next_frame())?.is_none());

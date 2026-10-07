@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{Result, types::regions::bytes::UncheckedByteRegion};
 
 use super::ByteRegion;
 
@@ -9,7 +9,7 @@ pub struct FrameRegion(ByteRegion);
 impl FrameRegion {
     /// Wraps a byte region that has already been established as one complete frame.
     pub(crate) fn new(offset: usize, frame_size: usize) -> Result<Self> {
-        Ok(Self(ByteRegion::new(offset, frame_size)?))
+        Ok(Self(UncheckedByteRegion::new(offset, frame_size)?))
     }
 
     /// Returns the underlying byte region.

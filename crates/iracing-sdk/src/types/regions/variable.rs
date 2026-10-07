@@ -1,7 +1,7 @@
 use iracing_irsdk::VariableHeader;
 use std::{num::NonZeroUsize, ops::Range};
 
-use crate::{IRacingSDKError, Result, VariableInfo};
+use crate::{IRacingSDKError, Result, VariableInfo, types::regions::bytes::UncheckedByteRegion};
 
 use super::ByteRegion;
 
@@ -35,7 +35,7 @@ impl VariableRegion {
             IRacingSDKError::parse_error("VariableRegion", "Variable region length overflows usize")
         })?;
 
-        let region = ByteRegion::new(offset, length)?;
+        let region = UncheckedByteRegion::new(offset, length)?;
         if region.end() > frame_size {
             return Err(IRacingSDKError::parse_error(
                 "VariableRegion",
@@ -122,7 +122,7 @@ impl TryFrom<&VariableHeader> for VariableRegion {
                 )
             })?;
 
-        let region = ByteRegion::new(offset, length)?;
+        let region = UncheckedByteRegion::new(offset, length)?;
         Ok(Self { region, count })
     }
 }
@@ -154,7 +154,7 @@ impl TryFrom<&VariableInfo> for VariableRegion {
                 )
             })?;
 
-        let region = ByteRegion::new(value.offset, length)?;
+        let region = UncheckedByteRegion::new(value.offset, length)?;
         Ok(Self { region, count })
     }
 }

@@ -1,3 +1,5 @@
+//! An IBT file source.
+
 use memmap2::Mmap;
 use std::ops::Range;
 use zerocopy::IntoBytes;

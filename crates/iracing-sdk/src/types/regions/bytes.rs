@@ -1,22 +1,26 @@
 use crate::{IRacingSDKError, Result};
 use std::ops::Range;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Unchecked;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Checked {
+    source_len: usize,
+}
+
 /// Offset and length for a byte span within an SDK data source.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ByteRegion {
+pub struct ByteRegion<S = Unchecked> {
     /// Start offset of the region, measured in bytes from the source origin.
     offset: usize,
     /// Length of the region in bytes.
     length: usize,
+
+    state: S,
 }
 
-impl ByteRegion {
-    /// Creates a new byte region.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`IRacingSDKError::Parse`] if `offset + length` overflows
-    /// `usize`.
+impl ByteRegion<Unchecked> {
     pub fn new(offset: usize, length: usize) -> Result<Self> {
         offset.checked_add(length).ok_or_else(|| {
             IRacingSDKError::parse_error(
@@ -25,21 +29,80 @@ impl ByteRegion {
             )
         })?;
 
-        Ok(Self { offset, length })
+        Ok(Self {
+            offset,
+            length,
+            state: Unchecked,
+        })
     }
 
+    pub fn checked(offset: usize, length: usize, source_len: usize) -> Result<ByteRegion<Checked>> {
+        let end = offset.checked_add(length).ok_or_else(|| {
+            IRacingSDKError::parse_error(
+                "ByteRegion",
+                format!("Region offset {offset} + length {length} overflows usize"),
+            )
+        })?;
+
+        if end > source_len {
+            return Err(IRacingSDKError::parse_error(
+                "ByteRegion",
+                format!("Region end is out of bounds: {} ({})", end, source_len),
+            ));
+        }
+
+        Ok(ByteRegion {
+            offset,
+            length,
+            state: Checked { source_len },
+        })
+    }
+
+    pub fn check(self, source_len: usize) -> Result<ByteRegion<Checked>> {
+        if self.end() > source_len {
+            return Err(IRacingSDKError::parse_error(
+                "ByteRegion",
+                format!(
+                    "Region end is out of bounds: {} ({})",
+                    self.end(),
+                    source_len
+                ),
+            ));
+        }
+
+        Ok(ByteRegion {
+            offset: self.offset,
+            length: self.length,
+            state: Checked { source_len },
+        })
+    }
+}
+
+impl ByteRegion<Checked> {
+    /// Creates a region validated against a source length.
+    pub fn new(offset: usize, length: usize, source_len: usize) -> Result<Self> {
+        ByteRegion::<Unchecked>::new(offset, length)?.check(source_len)
+    }
+
+    /// Returns the source length against which this region was validated.
+    pub const fn source_len(&self) -> usize {
+        self.state.source_len
+    }
+}
+
+impl<S> ByteRegion<S> {
     /// Returns the source-relative starting byte offset.
-    pub fn offset(self) -> usize {
+    pub fn offset(&self) -> usize {
         self.offset
     }
 
     /// Returns the length of the region in bytes.
-    pub fn len(self) -> usize {
+    pub fn len(&self) -> usize {
         self.length
     }
 
     /// Returns whether the region contains no bytes.
-    pub fn is_empty(self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.length == 0
     }
 
@@ -56,7 +119,7 @@ impl ByteRegion {
     }
 
     /// Returns whether each region begins before the other region ends.
-    pub fn overlaps(&self, other: Self) -> bool {
+    pub fn overlaps<T>(&self, other: &ByteRegion<T>) -> bool {
         // Ensure self is not empty...
         !self.is_empty()
             // Other is not empty...
@@ -67,7 +130,7 @@ impl ByteRegion {
     }
 }
 
-impl TryFrom<(usize, usize)> for ByteRegion {
+impl TryFrom<(usize, usize)> for ByteRegion<Unchecked> {
     type Error = IRacingSDKError;
 
     /// Creates a region from an `(offset, length)` pair.
@@ -81,7 +144,7 @@ impl TryFrom<(usize, usize)> for ByteRegion {
     }
 }
 
-impl TryFrom<Range<usize>> for ByteRegion {
+impl TryFrom<Range<usize>> for ByteRegion<Unchecked> {
     type Error = IRacingSDKError;
 
     /// Creates a region from a half-open byte range.
@@ -98,33 +161,42 @@ impl TryFrom<Range<usize>> for ByteRegion {
     }
 }
 
-impl From<ByteRegion> for Range<usize> {
-    fn from(value: ByteRegion) -> Self {
+impl From<ByteRegion<Unchecked>> for Range<usize> {
+    fn from(value: ByteRegion<Unchecked>) -> Self {
         value.as_range()
     }
 }
+
+impl From<ByteRegion<Checked>> for Range<usize> {
+    fn from(value: ByteRegion<Checked>) -> Self {
+        value.as_range()
+    }
+}
+
+pub type CheckedByteRegion = ByteRegion<Checked>;
+pub type UncheckedByteRegion = ByteRegion<Unchecked>;
 
 #[cfg(test)]
 mod tests {
     use std::assert_eq;
 
-    use crate::ByteRegion;
+    use crate::{ByteRegion, types::regions::bytes::Unchecked};
 
     #[test]
     fn empty_range_succeeds() {
-        assert!(ByteRegion::new(0, 0).is_ok());
+        assert!(ByteRegion::<Unchecked>::new(0, 0).is_ok());
     }
 
     #[test]
     fn end_calculation_succeeds() {
-        let region = ByteRegion::new(0, 2).unwrap();
+        let region = ByteRegion::<Unchecked>::new(0, 2).unwrap();
 
         assert_eq!(region.end(), 2);
     }
 
     #[test]
     fn usize_overflow_rejected() {
-        assert!(ByteRegion::new(usize::MAX, 1).is_err());
+        assert!(ByteRegion::<Unchecked>::new(usize::MAX, 1).is_err());
     }
 
     #[test]
@@ -160,36 +232,36 @@ mod tests {
     #[test]
     fn overlap_half_open() {
         // 0..4
-        let region = ByteRegion::new(0, 4).unwrap();
+        let region = ByteRegion::<Unchecked>::new(0, 4).unwrap();
         // 2..5
-        let overlap = ByteRegion::new(2, 3).unwrap();
+        let overlap = ByteRegion::<Unchecked>::new(2, 3).unwrap();
 
-        assert!(region.overlaps(overlap));
+        assert!(region.overlaps(&overlap));
 
         // 4..5
-        let adjacent = ByteRegion::new(4, 1).unwrap();
-        assert!(!region.overlaps(adjacent));
+        let adjacent = ByteRegion::<Unchecked>::new(4, 1).unwrap();
+        assert!(!region.overlaps(&adjacent));
     }
 
     #[test]
     fn empty_region_never_overlaps_even_inside_another_region() {
-        let occupied = ByteRegion::new(2, 5).unwrap();
+        let occupied = ByteRegion::<Unchecked>::new(2, 5).unwrap();
         for offset in [2, 4, 7] {
-            let empty = ByteRegion::new(offset, 0).unwrap();
-            assert!(!empty.overlaps(occupied));
-            assert!(!occupied.overlaps(empty));
+            let empty = ByteRegion::<Unchecked>::new(offset, 0).unwrap();
+            assert!(!empty.overlaps(&occupied));
+            assert!(!occupied.overlaps(&empty));
         }
     }
 
     #[test]
     fn valid_regions_can_end_at_usize_max() {
         for region in [
-            ByteRegion::new(usize::MAX, 0).unwrap(),
-            ByteRegion::new(usize::MAX - 1, 1).unwrap(),
+            ByteRegion::<Unchecked>::new(usize::MAX, 0).unwrap(),
+            ByteRegion::<Unchecked>::new(usize::MAX - 1, 1).unwrap(),
         ] {
             assert_eq!(region.end(), usize::MAX);
             assert_eq!(region.as_range().end, usize::MAX);
         }
-        assert!(ByteRegion::new(usize::MAX, 1).is_err());
+        assert!(ByteRegion::<Unchecked>::new(usize::MAX, 1).is_err());
     }
 }

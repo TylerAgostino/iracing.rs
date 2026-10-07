@@ -58,9 +58,9 @@
 //! - `benchmark`: enables benchmark targets.
 //!
 pub mod adapters;
-pub mod broadcast;
 mod error;
 pub mod irsdk;
+pub mod layout;
 mod parse_utils;
 pub mod readers;
 pub mod source;
@@ -100,3 +100,9 @@ pub use iracing_sdk_derive::*;
 pub use connections::ibt::IbtConnection;
 pub use connections::live::LiveConnection;
 pub use types::UpdateRate;
+
+/**
+ * Windows-only API
+ */
+#[cfg(windows)]
+pub mod broadcast;
