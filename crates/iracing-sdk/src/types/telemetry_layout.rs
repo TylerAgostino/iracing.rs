@@ -81,16 +81,19 @@ impl FieldLayout {
     }
 
     /// Returns the SDK storage type.
+    #[inline]
     pub fn data_type(&self) -> VariableType {
         self.data_type
     }
 
     /// Returns the validated frame-relative geometry.
+    #[inline]
     pub fn region(&self) -> VariableRegion {
         self.region
     }
 
     /// Returns the number of elements in this field.
+    #[inline]
     pub fn count(&self) -> usize {
         self.region.count()
     }
@@ -164,6 +167,7 @@ impl TelemetryLayout {
     }
 
     /// Returns a field by its layout-local ID, or `None` for an out-of-range ID.
+    #[inline]
     pub fn field(&self, id: FieldId) -> Option<&FieldLayout> {
         self.fields.get(id.0)
     }
@@ -180,6 +184,38 @@ impl TelemetryLayout {
             .iter()
             .enumerate()
             .map(|(index, field)| (FieldId(index), field))
+    }
+}
+
+/// Access to the shared runtime layout for a telemetry source or frame.
+pub trait LayoutProvider {
+    /// Returns the originating layout retained by this source.
+    fn layout(&self) -> &std::sync::Arc<TelemetryLayout>;
+    /// Resolves a published field name.
+    fn field_named(&self, name: &str) -> Option<&FieldLayout> {
+        self.layout().field_by_name(name).map(|(_, field)| field)
+    }
+    /// Checks whether the layout publishes a field.
+    fn has_field(&self, name: &str) -> bool {
+        self.field_named(name).is_some()
+    }
+    /// Returns all published names in header order.
+    fn field_names(&self) -> Vec<String> {
+        self.layout()
+            .fields()
+            .map(|(_, field)| field.name().to_owned())
+            .collect()
+    }
+    /// Returns field descriptions for inspection/export, outside typed hot paths.
+    fn fields_owned(&self) -> Vec<FieldLayout> {
+        self.layout()
+            .fields()
+            .map(|(_, field)| field.clone())
+            .collect()
+    }
+    /// Number of published fields.
+    fn field_count(&self) -> usize {
+        self.layout().len()
     }
 }
 

@@ -1,7 +1,7 @@
 use iracing_irsdk::VariableHeader;
 use std::{num::NonZeroUsize, ops::Range};
 
-use crate::{IRacingSDKError, Result, VariableInfo};
+use crate::{IRacingSDKError, Result};
 
 use super::ByteRegion;
 
@@ -72,11 +72,13 @@ impl VariableRegion {
     }
 
     /// Returns the underlying frame-relative byte region.
+    #[inline]
     pub fn as_region(&self) -> ByteRegion {
         self.region
     }
 
     /// Returns the region as a half-open byte range.
+    #[inline]
     pub fn as_range(&self) -> Range<usize> {
         self.region.as_range()
     }
@@ -87,6 +89,7 @@ impl VariableRegion {
     }
 
     /// Returns the frame-relative starting byte offset.
+    #[inline]
     pub fn offset(&self) -> usize {
         self.region.offset()
     }
@@ -97,6 +100,7 @@ impl VariableRegion {
     }
 
     /// Returns the number of elements in the region.
+    #[inline]
     pub fn count(&self) -> usize {
         self.count.get()
     }
@@ -145,38 +149,6 @@ impl TryFrom<&VariableHeader> for VariableRegion {
             })?;
 
         let region = ByteRegion::new(offset, length)?;
-        Ok(Self { region, count })
-    }
-}
-
-impl TryFrom<&VariableInfo> for VariableRegion {
-    type Error = IRacingSDKError;
-
-    /// Derives the frame-relative region described by parsed variable metadata.
-    ///
-    /// # Errors
-    ///
-    /// Returns a parse error if the variable type has no storage width or if a
-    /// size calculation overflows `usize`.
-    fn try_from(value: &VariableInfo) -> Result<Self> {
-        let count = NonZeroUsize::new(value.count).ok_or_else(|| {
-            IRacingSDKError::parse_error(
-                "VariableRegion::try_from",
-                "Variable count must be positive",
-            )
-        })?;
-        let length = value
-            .data_type
-            .byte_size()
-            .checked_mul(value.count)
-            .ok_or_else(|| {
-                IRacingSDKError::parse_error(
-                    "VariableRegion::try_from",
-                    "Variable region size calculation overflowed",
-                )
-            })?;
-
-        let region = ByteRegion::new(value.offset, length)?;
         Ok(Self { region, count })
     }
 }
