@@ -60,7 +60,7 @@ fn defaults_write_first_frame_as_yaml_to_stdout() -> Result<()> {
 }
 
 #[test]
-fn snapshot_orders_fields_by_offset_when_headers_are_reordered() -> Result<()> {
+fn snapshot_preserves_published_header_order() -> Result<()> {
     let path = require_named_ibt_fixture("profile_small.ibt")?;
     let header = *iracing_sdk::ibt::IbtReader::open(&path)?.header();
     let start = usize::try_from(header.variable_header_offset)?;
@@ -80,7 +80,7 @@ fn snapshot_orders_fields_by_offset_when_headers_are_reordered() -> Result<()> {
     let result = snapshot(&input).args(["--format", "json"]).output()?;
     assert!(result.status.success(), "{:?}", result);
     let text = String::from_utf8(result.stdout)?;
-    assert!(text.starts_with("{\"SessionTime\":"));
+    assert!(text.starts_with("{\"Gear\":"));
     let value: serde_json::Value = serde_json::from_str(&text)?;
     assert_eq!(value.as_object().unwrap().len(), 8);
     assert_eq!(value["Speed"], 35.0);

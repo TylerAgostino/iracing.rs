@@ -62,17 +62,11 @@ impl Args {
             }
         }?;
 
-        let mut fields_owned = packet.fields_owned();
+        let fields_owned = packet.fields_owned();
         ensure!(
             !fields_owned.is_empty(),
             "No telemetry variables were available from the source"
         );
-        fields_owned.sort_unstable_by(|left, right| {
-            left.region()
-                .offset()
-                .cmp(&right.region().offset())
-                .then_with(|| left.name().cmp(right.name()))
-        });
         let snapshot = TelemetrySnapshot::from_provider(&packet, &fields_owned)?;
         let mut writer = DocumentWriter::from_parts(self.output.clone(), self.format)?;
         writer.write(&snapshot)?;
