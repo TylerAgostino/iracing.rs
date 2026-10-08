@@ -8,10 +8,11 @@ use futures::StreamExt;
 use iracing_sdk::{DynamicFrame, IbtConnection, LayoutProvider};
 use std::path::PathBuf;
 
-use snapshot::Command as SnapshotCommand;
+use snapshot::Args as SnapshotArgs;
 
 use crate::writer::{OutputTarget, RecordStreamFormat, RecordStreamWriter};
 
+/// Export recorded telemetry, record live telemetry, or capture a single frame.
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
     /// Converts an IBT to CSV or JSONL
@@ -40,10 +41,7 @@ pub(crate) enum Command {
         format: RecordStreamFormat,
     },
     /// Snapshots a telemetry source
-    Snapshot {
-        #[command(subcommand)]
-        command: SnapshotCommand,
-    },
+    Snapshot(SnapshotArgs),
 }
 
 impl Command {
@@ -140,7 +138,7 @@ impl Command {
                 tracing::info!(frames_exported = frame_count, "Finished live export");
                 Ok(())
             }
-            Command::Snapshot { command } => command.run().await,
+            Command::Snapshot(args) => args.run(),
         }
     }
 }
