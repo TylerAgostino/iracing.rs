@@ -1,5 +1,5 @@
 use anyhow::Result;
-use iracing_sdk::provider::VariableHeadersProvider;
+use iracing_sdk::provider::SessionInformationProvider;
 
 use crate::{
     utils::SourceKind,
@@ -15,17 +15,23 @@ pub(crate) struct Args {
     #[arg(short, long, default_value = "-", global = true)]
     output: OutputTarget,
 
-    /// The encoding for the session string.
+    /// The format for the output.
     #[arg(long, default_value = "yaml", global = true, value_enum)]
     format: DocumentFormat,
 }
 
 impl Args {
     pub(crate) fn run(self) -> Result<()> {
-        let headers = self.source.open()?.variable_headers()?;
+        let unknown_fields = self
+            .source
+            .open()?
+            .session_info()?
+            .map(|info| info.collect_unknown_fields())
+            .unwrap_or(vec![]);
 
         let mut writer = DocumentWriter::from_parts(self.output.clone(), self.format)?;
-        writer.write(&headers)?;
+        writer.write(&unknown_fields)?;
+
         writer.finalize()
     }
 }

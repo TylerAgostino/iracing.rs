@@ -101,6 +101,8 @@ impl TryFrom<Command> for BroadcastMessage {
     /// Returns [`crate::error::Error::Validation`] if a chat macro number is
     /// outside `1..=15`.
     ///
+    /// Returns [`crate::error::Error::Validation`] if `CameraState` doesn't fit into the broadcast protocol's 16-bit argument
+    ///
     /// # Panics
     ///
     /// With overflow checks enabled, panics if car-number padding overflows `u16`.
@@ -120,10 +122,18 @@ impl TryFrom<Command> for BroadcastMessage {
                 camera
             ),
 
-            Command::CameraSetState(camera_state) => broadcast_message!(
-                BroadcastMessageKind::CameraSetState,
-                camera_state.bits() as u16
-            ),
+            Command::CameraSetState(camera_state) => {
+                let bits = u16::try_from(camera_state.bits()).map_err(|_| {
+                    crate::error::Error::Validation {
+                        reason: format!(
+                            "Camera state bits must fit in 16 bits, got {:#010x}",
+                            camera_state.bits()
+                        ),
+                    }
+                })?;
+
+                broadcast_message!(BroadcastMessageKind::CameraSetState, bits)
+            }
 
             Command::ReplaySetPlaySpeed(speed, slow_motion) => broadcast_message!(
                 BroadcastMessageKind::ReplaySetPlaySpeed,
@@ -270,6 +280,16 @@ mod tests {
             3,
             4,
         );
+    }
+
+    #[test]
+    fn camera_state_rejects_bits_that_do_not_fit_broadcast_argument() {
+        let state = CameraState::from_bits_retain(0x0001_0000);
+
+        let error = BroadcastMessage::try_from(Command::CameraSetState(state))
+            .expect_err("camera state bits above 16 bits must be rejected");
+
+        assert!(matches!(error, crate::error::Error::Validation { .. }));
     }
 
     #[test]
