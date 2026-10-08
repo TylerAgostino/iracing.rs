@@ -27,6 +27,9 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(windows)]
     {
-        Cli::parse().command.run()
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(Cli::parse().command.run())
     }
 }

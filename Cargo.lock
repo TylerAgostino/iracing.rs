@@ -1074,6 +1074,8 @@ dependencies = [
  "anyhow",
  "clap",
  "iracing-broadcast-sdk",
+ "iracing-sdk",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

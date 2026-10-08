@@ -46,7 +46,7 @@ impl Command {
         match self {
             Command::Session { command } => command.run(),
             #[cfg(windows)]
-            Command::Broadcast { command } => command.run(),
+            Command::Broadcast { command } => command.run().await,
             Command::Headers(args) => args.run(),
             Command::Variables(args) => args.run(),
             Command::Telemetry { command } => command.run().await,

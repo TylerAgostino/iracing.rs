@@ -98,12 +98,23 @@ pub enum ReplayCommand {
     },
     /// Erase replay tape
     Erase,
-    /// Search for a provided session time
+    /// Search for a session time using operator-friendly input.
+    ///
+    /// `--session` is a numeric iRacing session number or a human selector
+    /// such as `race`, `practice`, or `qualify`, resolved against the live
+    /// session metadata; `--time` is `SS`, `MM:SS`, or `HH:MM:SS`. The
+    /// selectors are resolved in [`crate::Command::run`] before the low-level
+    /// `ReplaySearchSessionTime` broadcast is sent.
     SearchSessionTime {
+        /// Session number or name (`race`, `practice`, `qualify`, `heat`)
+        ///
+        /// Resolved against the sessions in the live session metadata; a
+        /// number must exist there.
         #[arg(long)]
-        session: u16,
+        session: String,
+        /// Session time as `SS`, `MM:SS`, or `HH:MM:SS` (e.g. `5:31:20`)
         #[arg(long)]
-        time_ms: u32,
+        time: String,
     },
     Normal,
     Slow16,
@@ -111,13 +122,20 @@ pub enum ReplayCommand {
     Pause,
 }
 
-impl From<ReplayCommand> for BroadcastCommand {
+impl TryFrom<ReplayCommand> for BroadcastCommand {
+    type Error = anyhow::Error;
+
     /// Build a replay broadcast command, expanding playback shortcuts.
     ///
     /// `Normal`, `Slow16`, and `Pause` select speed/slow-motion pairs `(1, false)`,
-    /// `(16, true)`, and `(0, false)`, respectively. Session times remain in milliseconds.
-    fn from(value: ReplayCommand) -> Self {
-        match value {
+    /// `(16, true)`, and `(0, false)`, respectively.
+    ///
+    /// # Errors
+    ///
+    /// `SearchSessionTime` requires the live session list for validation and
+    /// is rejected here; [`crate::Command::run`] resolves its selectors first.
+    fn try_from(value: ReplayCommand) -> Result<Self, Self::Error> {
+        let command = match value {
             ReplayCommand::SetPlaySpeed { speed, slow_motion } => {
                 BroadcastCommand::ReplaySetPlaySpeed(speed, slow_motion)
             }
@@ -126,13 +144,16 @@ impl From<ReplayCommand> for BroadcastCommand {
                 BroadcastCommand::ReplaySetPlayPosition(mode, frame)
             }
             ReplayCommand::Erase => BroadcastCommand::ReplaySetState(ReplayStateMode::EraseTape),
-            ReplayCommand::SearchSessionTime { session, time_ms } => {
-                BroadcastCommand::ReplaySearchSessionTime(session, time_ms)
-            }
+            ReplayCommand::SearchSessionTime { .. } => anyhow::bail!(
+                "replay search-session-time must be resolved against live session metadata; \
+                 send it through Command::run"
+            ),
             ReplayCommand::Normal => BroadcastCommand::ReplaySetPlaySpeed(1, false),
             ReplayCommand::Slow16 => BroadcastCommand::ReplaySetPlaySpeed(16, true),
             ReplayCommand::Pause => BroadcastCommand::ReplaySetPlaySpeed(0, false),
-        }
+        };
+
+        Ok(command)
     }
 }
 
