@@ -1,12 +1,13 @@
-mod headers;
-mod session;
-mod telemetry;
+// Production simulator commands are Windows-only; retain portable adapters/contracts.
+#[cfg_attr(not(windows), allow(dead_code))]
+mod application;
+mod commands;
 pub(crate) mod utils;
-mod variables;
 mod writer;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::Parser;
+use commands::Command;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -14,44 +15,6 @@ use tracing_subscriber::EnvFilter;
 struct Cli {
     #[command(subcommand)]
     command: Command,
-}
-
-#[derive(Subcommand, Debug)]
-enum Command {
-    /// Tools for interacting with disk and live headers, as well as the type schema and layout.
-    Headers(headers::Args),
-    /// Tools for interacting with disk and live session strings, as well as type schemas.
-    Session {
-        #[command(subcommand)]
-        command: session::Command,
-    },
-    /// Tools for interacting with disk and live variables.
-    Variables(variables::Args),
-    /// Tools for capturing telemetry from a source.
-    Telemetry {
-        #[command(subcommand)]
-        command: telemetry::Command,
-    },
-    /// Tools for sending broadcast commands to the simulator.
-    #[cfg(windows)]
-    Broadcast {
-        #[command(subcommand)]
-        command: iracing_broadcast_cli::Command,
-    },
-}
-
-impl Command {
-    /// Execute the selected tool command and propagate its errors.
-    pub async fn run(self) -> Result<()> {
-        match self {
-            Command::Session { command } => command.run(),
-            #[cfg(windows)]
-            Command::Broadcast { command } => command.run(),
-            Command::Headers(args) => args.run(),
-            Command::Variables(args) => args.run(),
-            Command::Telemetry { command } => command.run().await,
-        }
-    }
 }
 
 /// Run the selected SDK tool, returning any command execution errors.
@@ -63,7 +26,8 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    Cli::parse().command.run().await?;
+    let mut application = application::Application::new();
+    Cli::parse().command.run(&mut application).await?;
 
     Ok(())
 }
