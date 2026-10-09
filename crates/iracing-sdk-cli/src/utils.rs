@@ -32,6 +32,10 @@ impl DiskTelemetry {
     /// telemetry layout validation errors.
     pub(crate) fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let reader = IbtReader::open(path)?;
+        Self::from_reader(reader)
+    }
+
+    pub(crate) fn from_reader(reader: IbtReader) -> Result<Self> {
         let frame_size = reader.frame_size();
         let headers = reader.variable_headers()?;
         let layout = TelemetryLayout::try_from_headers(&headers, frame_size)?;
@@ -108,6 +112,10 @@ impl LiveTelemetry {
             Err(e) => return Err(anyhow::anyhow!(e)),
         };
 
+        Self::from_connection(connection)
+    }
+
+    pub(crate) fn from_connection(connection: WindowsConnection) -> Result<Self> {
         let frame_size = usize::try_from(connection.header_snapshot()?.buffer_length)?;
         let headers = connection.variable_headers()?;
         let layout = TelemetryLayout::try_from_headers(&headers, frame_size)?;
