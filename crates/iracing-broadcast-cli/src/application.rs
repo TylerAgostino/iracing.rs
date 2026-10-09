@@ -357,7 +357,7 @@ mod tests {
                 .send_broadcast(Command::ReloadAllTextures)
                 .unwrap_err()
                 .to_string()
-                .contains("only run on Windows")
+                .contains("only runs on Windows")
         );
     }
 
@@ -369,7 +369,7 @@ mod tests {
                 .replay_sessions()
                 .unwrap_err()
                 .to_string()
-                .contains("only run on Windows")
+                .contains("only runs on Windows")
         );
     }
 }
