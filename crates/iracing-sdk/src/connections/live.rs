@@ -1,16 +1,9 @@
 //! Live telemetry connection for Windows
 
-mod builder;
-
-pub use builder::LiveConnectionBuilder;
-
-#[cfg(windows)]
-use crate::LayoutProvider;
-
 #[cfg(windows)]
 use {
     crate::{
-        FrameAdapter, Result, TelemetryLayout,
+        FrameAdapter, LayoutProvider, Result, TelemetryLayout,
         provider::Provider,
         providers::live::LiveProvider,
         schema::SessionInfo,
@@ -46,9 +39,10 @@ pub struct LiveConnection {
 
 #[cfg(windows)]
 impl LiveConnection {
-    /// Start building a live telemetry connection.
-    pub fn builder() -> LiveConnectionBuilder {
-        LiveConnectionBuilder::default()
+    /// Creates a new connection with a new provider.
+    pub fn new() -> Result<Self> {
+        let provider = LiveProvider::new()?;
+        Ok(Self::from_provider(provider))
     }
 
     /// Starts background telemetry and session delivery from the provider.
@@ -166,17 +160,6 @@ impl Drop for LiveConnection {
 // Non-Windows stub implementation
 #[cfg(not(windows))]
 /// Placeholder live connection type on unsupported platforms.
-///
-/// Calling [`Self::builder`] and building it returns
-/// [`crate::IRacingSDKError::UnsupportedPlatform`].
 pub struct LiveConnection {
     _private: (),
-}
-
-#[cfg(not(windows))]
-impl LiveConnection {
-    /// Start building a live telemetry connection.
-    pub fn builder() -> LiveConnectionBuilder {
-        LiveConnectionBuilder::default()
-    }
 }
