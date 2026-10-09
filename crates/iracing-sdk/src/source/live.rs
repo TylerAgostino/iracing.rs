@@ -92,14 +92,14 @@ async fn wait_for_event_async(event: Arc<OwnedHandle>, timeout_ms: u32) -> Resul
 }
 
 #[derive(Debug)]
-pub(crate) struct LiveSource {
+pub(crate) struct Source {
     view: MappedView,
     _mapping: OwnedHandle,
     event: Arc<OwnedHandle>,
     len: usize,
 }
 
-impl LiveSource {
+impl Source {
     #[cfg(test)]
     pub(crate) fn test_source(bytes: &[u8]) -> Self {
         use windows::Win32::{
@@ -349,7 +349,7 @@ mod tests {
 
     #[tokio::test]
     async fn canceled_async_wait_retains_event_until_worker_finishes() {
-        let source = LiveSource::test_source(&[0; 112]);
+        let source = Source::test_source(&[0; 112]);
         let weak = Arc::downgrade(&source.event);
         let mut wait = Box::pin(source.wait_for_update_async(Duration::from_secs(5)));
         // Poll once to submit the blocking worker, then cancel its awaiting future.
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn private_event_wait_times_out_and_signals() {
-        let source = LiveSource::test_source(&[0; 112]);
+        let source = Source::test_source(&[0; 112]);
         assert_eq!(
             source.wait_for_update(Duration::ZERO).unwrap(),
             WaitResult::Timeout
