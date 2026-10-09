@@ -357,7 +357,8 @@ mod tests {
                 .send_broadcast(Command::ReloadAllTextures)
                 .unwrap_err()
                 .to_string()
-                .contains("only runs on Windows")
+                // See L135 in lib.rs for the error message
+                .contains("only run on Windows")
         );
     }
 
@@ -369,6 +370,7 @@ mod tests {
                 .replay_sessions()
                 .unwrap_err()
                 .to_string()
+                // See L172 for the error message
                 .contains("only runs on Windows")
         );
     }

@@ -49,7 +49,7 @@ pub enum CameraCommand {
     SwitchNumber {
         #[arg(long)]
         car_number: String,
-        #[arg(long)]
+        #[arg(long, default_value_t = 0)]
         group: u16,
         #[arg(long, default_value_t = 0)]
         camera: u16,
