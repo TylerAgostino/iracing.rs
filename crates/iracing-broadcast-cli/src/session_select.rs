@@ -213,7 +213,7 @@ impl ReplaySession {
 /// Resolve a session selector against the sessions available for replay.
 ///
 /// Numeric selectors must exist in the list. Name selectors are matched on the
-/// compact form of each session's type and name: exact matches win over
+/// normalized form of each session's type and name: exact matches win over
 /// substring matches.
 ///
 /// # Errors
@@ -292,10 +292,10 @@ fn normalize_selector(selector: &str) -> String {
     }
 }
 
-/// Compact candidate labels (`session_type`, then name) for a session.
+/// Normalize candidate labels (`session_type`, then name) like selectors.
 fn session_candidates(session: &ReplaySession) -> impl Iterator<Item = String> {
-    let type_label = compact(&session.session_type);
-    let name_label = session.name.as_deref().map(compact);
+    let type_label = normalize_selector(&session.session_type);
+    let name_label = session.name.as_deref().map(normalize_selector);
     [Some(type_label), name_label]
         .into_iter()
         .flatten()
@@ -467,6 +467,40 @@ mod tests {
                 .number,
             0
         );
+    }
+
+    #[test]
+    fn aliases_match_session_types_and_names() {
+        for (label, wanted) in [
+            ("QUALS", "qualify"),
+            ("Qualifying", "quals"),
+            ("Prac-tise", "practice"),
+        ] {
+            for candidate in [session(3, label, None), session(3, "Other", Some(label))] {
+                assert_eq!(
+                    resolve_session(&selector(wanted), &[candidate])
+                        .unwrap()
+                        .number,
+                    3
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn alias_equivalent_sessions_are_ambiguous() {
+        let sessions = vec![
+            session(0, "Qualify", None),
+            session(1, "Qualifying", None),
+            session(2, "Other", Some("Quals")),
+        ];
+        let error = resolve_session(&selector("qualify"), &sessions)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("ambiguous"));
+        assert!(error.contains("0=Qualify"));
+        assert!(error.contains("1=Qualifying"));
+        assert!(error.contains("2=Other"));
     }
 
     #[test]
